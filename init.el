@@ -156,6 +156,7 @@ Otherwise the startup will be very slow. "
 (require 'init-dart)
 (require 'init-elixir)
 (require 'init-web)
+(require 'init-erlang)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; init.el ends here

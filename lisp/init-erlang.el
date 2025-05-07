@@ -18,7 +18,7 @@
 
 ;; for erlang
 (use-package erlang
-  :load-path ("~/kerl/25.0.4/lib/tools-3.5.3/emacs")
+  :load-path ("~/kerl/25.3.2/lib/tools-3.5.3/emacs")
   :hook (after-save . ivy-erlang-complete-reparse)
   :custom (ivy-erlang-complete-erlang-root "~/kerl/25.0.4/lib")
   :config (ivy-erlang-complete-init)

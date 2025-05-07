@@ -1,6 +1,6 @@
 ;; init-ui.el --- Better lookings and appearances.	-*- lexical-binding: t -*-
 
-;; Copyright (C) 2006-2022 Vincent Zhang
+;; Copyright (C) 2006-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
@@ -30,9 +30,9 @@
 
 ;;; Code:
 
-(require 'init-const)
-(require 'init-custom)
-(require 'init-funcs)
+(eval-when-compile
+  (require 'init-const)
+  (require 'init-custom))
 
 ;; Optimization
 (setq idle-update-delay 1.0)
@@ -47,6 +47,13 @@
 (setq frame-inhibit-implied-resize t
       frame-resize-pixelwise t)
 
+;; Initial frame
+(setq initial-frame-alist '((top . 0.5)
+                            (left . 0.5)
+                            (width . 0.7)
+                            (height . 0.85)
+                            (fullscreen)))
+
 ;; Logo
 (setq fancy-splash-image centaur-logo)
 
@@ -54,62 +61,62 @@
 (setq frame-title-format '("Centaur Emacs - %b")
       icon-title-format frame-title-format)
 
-(when (and sys/mac-ns-p sys/mac-x-p)
+(when (or sys/mac-ns-p sys/mac-port-p)
   (add-to-list 'default-frame-alist '(ns-transparent-titlebar . t))
   (add-to-list 'default-frame-alist '(ns-appearance . dark))
-  (add-hook 'after-load-theme-hook
+  (add-hook 'server-after-make-frame-hook
             (lambda ()
-              (let ((bg (frame-parameter nil 'background-mode)))
-                (set-frame-parameter nil 'ns-appearance bg)
-                (setcdr (assq 'ns-appearance default-frame-alist) bg)))))
+              (if (display-graphic-p)
+                  (menu-bar-mode 1)
+                (menu-bar-mode -1))))
 
-;; Menu/Tool/Scroll bars
-(unless emacs/>=27p
-  (push '(menu-bar-lines . 0) default-frame-alist)
-  (push '(tool-bar-lines . 0) default-frame-alist)
-  (push '(vertical-scroll-bars) default-frame-alist)
-  (when (featurep 'ns)
-    (push '(ns-transparent-titlebar . t) default-frame-alist)))
+  (defun refresh-ns-appearance ()
+    "Refresh frame parameter ns-appearance."
+    (let ((bg (frame-parameter nil 'background-mode)))
+      (set-frame-parameter nil 'ns-appearance bg)
+      (setcdr (assq 'ns-appearance default-frame-alist) bg)))
+  (add-hook 'after-load-theme-hook #'refresh-ns-appearance)
+  (with-eval-after-load'auto-dark
+   (add-hook 'auto-dark-dark-mode-hook #'refresh-ns-appearance)
+   (add-hook 'auto-dark-light-mode-hook #'refresh-ns-appearance)))
 
 ;; Theme
 (if (centaur-compatible-theme-p centaur-theme)
     (progn
       ;; Make certain buffers grossly incandescent
       (use-package solaire-mode
-        :hook (after-load-theme . solaire-global-mode))
+        :hook (after-init . solaire-global-mode))
 
+      ;; Excellent themes
       (use-package doom-themes
-        :bind ("C-c T" . centaur-load-theme)
-        :custom (doom-themes-treemacs-theme "doom-colors")
+        :custom
+        (doom-themes-enable-bold t)
+        (doom-themes-enable-italic t)
         :init (centaur-load-theme centaur-theme t)
         :config
         ;; Enable flashing mode-line on errors
         (doom-themes-visual-bell-config)
 
-        ;; WORKAROUND: Visual bell on 29
+        ;; WORKAROUND: Visual bell on 29+
         ;; @see https://github.com/doomemacs/themes/issues/733
         (with-no-warnings
           (defun my-doom-themes-visual-bell-fn ()
             "Blink the mode-line red briefly. Set `ring-bell-function' to this to use it."
-            (let* ((buf (current-buffer))
-                   (cookies `(,(face-remap-add-relative 'mode-line-active
-                                                        'doom-themes-visual-bell)
-                              ,(face-remap-add-relative 'mode-line
-                                                        'doom-themes-visual-bell))))
+            (let ((buf (current-buffer))
+                  (cookies (mapcar (lambda (face)
+                                     (face-remap-add-relative face 'doom-themes-visual-bell))
+                                   (if (facep 'mode-line-active)
+                                       '(mode-line-active solaire-mode-line-active-face)
+                                     '(mode-line solaire-mode-line-face)))))
               (force-mode-line-update)
               (run-with-timer 0.15 nil
                               (lambda ()
                                 (with-current-buffer buf
                                   (mapc #'face-remap-remove-relative cookies)
                                   (force-mode-line-update))))))
-          (advice-add #'doom-themes-visual-bell-fn :override #'my-doom-themes-visual-bell-fn))
-
-        ;; Enable customized theme
-        ;; FIXME: https://github.com/emacs-lsp/lsp-treemacs/issues/89
-        (with-eval-after-load 'lsp-treemacs
-          (doom-themes-treemacs-config))))
+          (advice-add #'doom-themes-visual-bell-fn :override #'my-doom-themes-visual-bell-fn))))
   (progn
-    (warn "The current theme is incompatible!")
+    (warn "The current theme may be incompatible!")
     (centaur-load-theme centaur-theme t)))
 
 ;; Mode-line
@@ -117,17 +124,12 @@
   :hook (after-init . doom-modeline-mode)
   :init
   (setq doom-modeline-icon centaur-icon
-        doom-modeline-height 1
-        doom-modeline-window-width-limit 110
         doom-modeline-minor-modes t)
-  ;; Prevent flash of unstyled modeline at startup
-  (unless after-init-time
-    (setq-default mode-line-format nil))
   :bind (:map doom-modeline-mode-map
          ("C-<f6>" . doom-modeline-hydra/body))
   :pretty-hydra
-  ((:title (pretty-hydra-title "Mode Line" 'fileicon "emacs" :face 'all-the-icons-purple :v-adjust -0.1)
-    :color amaranth :quit-key "q")
+  ((:title (pretty-hydra-title "Mode Line" 'sucicon "nf-custom-emacs" :face 'nerd-icons-purple)
+    :color amaranth :quit-key ("q" "C-g"))
    ("Icon"
     (("i" (setq doom-modeline-icon (not doom-modeline-icon))
       "display icons" :toggle doom-modeline-icon)
@@ -160,8 +162,8 @@
       "misc info" :toggle doom-modeline-display-misc-in-all-mode-lines)
      ("g l" (setq doom-modeline-lsp (not doom-modeline-lsp))
       "lsp" :toggle doom-modeline-lsp)
-     ("g p" (setq doom-modeline-persp-name (not doom-modeline-persp-name))
-      "perspective" :toggle doom-modeline-persp-name)
+     ("g k" (setq doom-modeline-workspace-name (not doom-modeline-workspace-name))
+      "workspace" :toggle doom-modeline-workspace-name)
      ("g g" (setq doom-modeline-github (not doom-modeline-github))
       "github" :toggle doom-modeline-github)
      ("g n" (setq doom-modeline-gnus (not doom-modeline-gnus))
@@ -173,9 +175,9 @@
      ("g f" (setq doom-modeline-irc-buffers (not doom-modeline-irc-buffers))
       "irc buffers" :toggle doom-modeline-irc-buffers)
      ("g s" (progn
-            (setq doom-modeline-checker-simple-format (not doom-modeline-checker-simple-format))
-            (and (bound-and-true-p flycheck-mode) (flycheck-buffer)))
-      "simple checker" :toggle doom-modeline-checker-simple-format)
+              (setq doom-modeline-check-simple-format (not doom-modeline-check-simple-format))
+              (and (bound-and-true-p flycheck-mode) (flycheck-buffer)))
+      "simple check format" :toggle doom-modeline-check-simple-format)
      ("g t" (setq doom-modeline-time (not doom-modeline-time))
       "time" :toggle doom-modeline-time)
      ("g v" (setq doom-modeline-env-version (not doom-modeline-env-version))
@@ -190,6 +192,9 @@
      ("f" (setq doom-modeline-buffer-file-name-style 'file-name)
       "file name"
       :toggle (eq doom-modeline-buffer-file-name-style 'file-name))
+     ("F" (setq doom-modeline-buffer-file-name-style 'file-name-with-project)
+      "file name with project"
+      :toggle (eq doom-modeline-buffer-file-name-style 'file-name-with-project))
      ("t u" (setq doom-modeline-buffer-file-name-style 'truncate-upto-project)
       "truncate upto project"
       :toggle (eq doom-modeline-buffer-file-name-style 'truncate-upto-project))
@@ -248,106 +253,44 @@
               (grip-browse-preview)
             (message "Not in preview"))
       "browse preview" :exit t)
-     ("z h" (counsel-set-variable 'doom-modeline-height) "set height" :exit t)
-     ("z w" (counsel-set-variable 'doom-modeline-bar-width) "set bar width" :exit t)
-     ("z g" (counsel-set-variable 'doom-modeline-github-interval) "set github interval" :exit t)
-     ("z n" (counsel-set-variable 'doom-modeline-gnus-timer) "set gnus interval" :exit t)))))
+     ("z h" (set-from-minibuffer 'doom-modeline-height)
+      "set height" :exit t)
+     ("z w" (set-from-minibuffer 'doom-modeline-bar-width)
+      "set bar width" :exit t)
+     ("z g" (set-from-minibuffer 'doom-modeline-github-interval)
+      "set github interval" :exit t)
+     ("z n" (set-from-minibuffer 'doom-modeline-gnus-timer)
+      "set gnus interval" :exit t)))))
 
 (use-package hide-mode-line
-  :hook (((completion-list-mode
-           completion-in-region-mode
-           eshell-mode
-           shell-mode
-           term-mode
-           vterm-mode
-           pdf-annot-list-mode
-           flycheck-error-list-mode) . hide-mode-line-mode)))
+  :hook (((treemacs-mode
+           eshell-mode shell-mode
+           term-mode vterm-mode eat-mode
+           embark-collect-mode
+           lsp-ui-imenu-mode
+           pdf-annot-list-mode) . turn-on-hide-mode-line-mode)
+         (dired-mode . (lambda()
+                         (and (bound-and-true-p hide-mode-line-mode)
+                              (turn-off-hide-mode-line-mode))))))
 
 ;; A minor-mode menu for mode-line
 (use-package minions
   :hook (doom-modeline-mode . minions-mode))
 
 ;; Icons
-;; NOTE: Must run `M-x all-the-icons-install-fonts', and install fonts manually on Windows
-(when centaur-icon
-  (use-package all-the-icons
-    :custom (all-the-icons-scale-factor 1.1)
-    :init (unless (or sys/win32p
-                      (daemonp)
-                      (font-installed-p "all-the-icons"))
-            (centaur-install-fonts))
-    :config
-    ;; Support more icons
-    (let ((extension-icon-alist
-           '(("bat"  all-the-icons-alltheicon "terminal" :face all-the-icons-lsilver)
-             ("cmd"  all-the-icons-alltheicon "terminal" :face all-the-icons-lsilver)
-             ("conf" all-the-icons-octicon "settings"    :v-adjust 0.0 :face all-the-icons-yellow)
-             ("eln"  all-the-icons-octicon "file-binary" :v-adjust 0.0 :face all-the-icons-dsilver)
-             ("epub" all-the-icons-faicon "book"         :height 1.0 :v-adjust -0.1 :face all-the-icons-green)
-             ("exe"  all-the-icons-octicon "file-binary" :v-adjust 0.0 :face all-the-icons-dsilver)
-             ("make" all-the-icons-fileicon "gnu"        :face all-the-icons-dorange)
-             ("rss"  all-the-icons-octicon "rss"         :height 1.1 :v-adjust 0.0 :face all-the-icons-lorange)
-             ("toml" all-the-icons-octicon "settings"    :v-adjust 0.0 :face all-the-icons-yellow)
-             ("tsx"  all-the-icons-fileicon "tsx"        :height 1.0 :v-adjust -0.1 :face all-the-icons-cyan-alt)
-             ("xpm"  all-the-icons-octicon "file-media"  :v-adjust 0.0 :face all-the-icons-dgreen))))
-      (dolist (icon extension-icon-alist)
-        (add-to-list 'all-the-icons-extension-icon-alist icon)))
-
-    (let ((regexp-icon-alist
-           '(("\\.[bB][iI][nN]$"               all-the-icons-octicon "file-binary" :v-adjust 0.0 :face all-the-icons-yellow)
-             ("^config$"                       all-the-icons-octicon "settings"    :v-adjust 0.0 :face all-the-icons-dorange)
-             ("\\.\\(ba\\|z\\)shrc$"           all-the-icons-alltheicon "script"   :height 0.9 :face all-the-icons-dpink)
-             ("\\.\\(bash\\|zsh\\)*_?profile$" all-the-icons-alltheicon "script"   :height 0.9 :face all-the-icons-dred)
-             ("\\.\\(ba\\|z\\)sh_history$"     all-the-icons-alltheicon "script"   :height 0.9 :face all-the-icons-dsilver)
-             ("\\.zshenv$"                     all-the-icons-alltheicon "script"   :height 0.9 :face all-the-icons-dred)
-             ("Cask\\'"                        all-the-icons-fileicon "elisp"      :height 1.0 :v-adjust -0.2 :face all-the-icons-blue)
-             ("NEWS$"                          all-the-icons-faicon "newspaper-o"  :height 0.9 :v-adjust -0.2)
-             ("^Rakefile$"                     all-the-icons-alltheicon "ruby-alt" :face all-the-icons-red))))
-      (dolist (icon regexp-icon-alist)
-        (add-to-list 'all-the-icons-regexp-icon-alist icon)))
-
-    (let ((mode-icon-alist
-           '((xwidget-webkit-mode           all-the-icons-faicon "chrome"          :v-adjust -0.1 :face all-the-icons-blue)
-             (bongo-playlist-mode           all-the-icons-material "queue_music"   :height 1.3 :face all-the-icons-green)
-             (bongo-library-mode            all-the-icons-material "library_music" :height 1.1 :face all-the-icons-green)
-             (simple-mpc-mode               all-the-icons-faicon "music"           :v-adjust -0.1 :face all-the-icons-green)
-             (mingus-playlist-mode          all-the-icons-faicon "music"           :v-adjust -0.1 :face all-the-icons-green)
-             (mingus-help-mode              all-the-icons-material "music_note"    :height 1.2 :face all-the-icons-green)
-             (mingus-browse-mode            all-the-icons-material "library_music" :height 1.1 :face all-the-icons-green)
-             (mingus-burn-mode              all-the-icons-material "queue_music"   :height 1.3 :face all-the-icons-green)
-             (gnus-group-mode               all-the-icons-fileicon "gnu"           :face all-the-icons-silver)
-             (gnus-summary-mode             all-the-icons-octicon "inbox"          :height 1.0 :v-adjust 0.0 :face all-the-icons-orange)
-             (gnus-article-mode             all-the-icons-octicon "mail"           :height 1.1 :v-adjust 0.0 :face all-the-icons-lblue)
-             (message-mode                  all-the-icons-octicon "mail"           :height 1.1 :v-adjust 0.0 :face all-the-icons-lblue)
-             (diff-mode                     all-the-icons-octicon "git-compare"    :v-adjust 0.0 :face all-the-icons-lred)
-             (flycheck-error-list-mode      all-the-icons-octicon "checklist"      :height 1.1 :v-adjust 0.0 :face all-the-icons-lred)
-             (newsticker-mode               all-the-icons-faicon "rss-square"      :v-adjust -0.1 :face all-the-icons-orange)
-             (newsticker-treeview-mode      all-the-icons-faicon "rss-square"      :v-adjust -0.1 :face all-the-icons-orange)
-             (newsticker-treeview-list-mode all-the-icons-octicon "rss"            :height 1.1 :v-adjust 0.0 :face all-the-icons-orange)
-             (newsticker-treeview-item-mode all-the-icons-octicon "rss"            :height 1.1 :v-adjust 0.0 :face all-the-icons-lorange)
-             (conf-mode                     all-the-icons-octicon "settings"       :v-adjust 0.0 :face all-the-icons-yellow)
-             (conf-space-mode               all-the-icons-octicon "settings"       :v-adjust 0.0 :face all-the-icons-yellow)
-             (gitconfig-mode                all-the-icons-octicon "settings"       :v-adjust 0.0 :face all-the-icons-dorange)
-             (forge-topic-mode              all-the-icons-alltheicon "git"         :face all-the-icons-blue)
-             (help-mode                     all-the-icons-faicon "info-circle"     :height 1.1 :v-adjust -0.1 :face all-the-icons-purple)
-             (helpful-mode                  all-the-icons-faicon "info-circle"     :height 1.1 :v-adjust -0.1 :face all-the-icons-purple)
-             (Info-mode                     all-the-icons-faicon "info-circle"     :height 1.1 :v-adjust -0.1)
-             (cask-mode                     all-the-icons-fileicon "elisp"         :height 1.0 :v-adjust -0.2 :face all-the-icons-blue)
-             (ein:notebooklist-mode         all-the-icons-faicon "book"            :face all-the-icons-lorange)
-             (ein:notebook-mode             all-the-icons-fileicon "jupyter"       :height 1.2 :face all-the-icons-orange)
-             (ein:notebook-multilang-mode   all-the-icons-fileicon "jupyter"       :height 1.2 :face all-the-icons-dorange)
-             (nov-mode                      all-the-icons-faicon "book"            :height 1.0 :v-adjust -0.1 :face all-the-icons-green)
-             (gfm-mode                      all-the-icons-octicon "markdown"       :face all-the-icons-lblue)
-             (osx-dictionary-mode           all-the-icons-material "library_books" :face all-the-icons-lblue)
-             (youdao-dictionary-mode        all-the-icons-material "library_books" :face all-the-icons-lblue)
-             (fanyi-mode                    all-the-icons-material "library_books" :face all-the-icons-lblue))))
-      (dolist (icon mode-icon-alist)
-        (add-to-list 'all-the-icons-mode-icon-alist icon)))))
+(use-package nerd-icons
+  :config
+  (when (and (display-graphic-p)
+             (not (font-installed-p nerd-icons-font-family)))
+    (nerd-icons-install-fonts t)))
 
 ;; Show line numbers
 (use-package display-line-numbers
   :ensure nil
-  :hook ((prog-mode yaml-mode conf-mode) . display-line-numbers-mode)
+  :hook ((prog-mode
+          conf-mode toml-ts-mode
+          yaml-mode yaml-ts-mode)
+         . display-line-numbers-mode)
   :init (setq display-line-numbers-width-start t))
 
 ;; Suppress GUI features
@@ -377,6 +320,11 @@
          ("C-s--" . default-text-scale-decrease)
          ("C-s-0" . default-text-scale-reset)))
 
+;; Display time
+(use-package time
+  :init (setq display-time-default-load-average nil
+              display-time-format "%H:%M"))
+
 ;; Mouse & Smooth Scroll
 ;; Scroll one line at a time (less "jumpy" than defaults)
 (when (display-graphic-p)
@@ -389,20 +337,19 @@
       auto-window-vscroll nil
       scroll-preserve-screen-position t)
 
-;; Good pixel line scrolling
-(if (fboundp 'pixel-scroll-precision-mode)
-    (pixel-scroll-precision-mode t)
-  (when (and emacs/>=27p (not sys/macp))
-    (use-package good-scroll
-      :diminish
-      :hook (after-init . good-scroll-mode)
-      :bind (([remap next] . good-scroll-up-full-screen)
-             ([remap prior] . good-scroll-down-full-screen)))))
+;; Smooth scrolling
+(when emacs/>=29p
+  (use-package ultra-scroll
+    :ensure nil
+    :init (unless (package-installed-p 'ultra-scroll)
+            (package-vc-install "https://github.com/jdtsmith/ultra-scroll"))
+    :hook (after-init . ultra-scroll-mode)))
 
 ;; Smooth scrolling over images
-(use-package iscroll
-  :diminish
-  :hook (image-mode . iscroll-mode))
+(unless emacs/>=30p
+  (use-package iscroll
+    :diminish
+    :hook (image-mode . iscroll-mode)))
 
 ;; Use fixed pitch where it's sensible
 (use-package mixed-pitch
@@ -411,42 +358,26 @@
 ;; Display ugly ^L page breaks as tidy horizontal lines
 (use-package page-break-lines
   :diminish
-  :hook (after-init . global-page-break-lines-mode))
+  :hook (after-init . global-page-break-lines-mode)
+  :config (dolist (mode '(dashboard-mode emacs-news-mode))
+            (add-to-list 'page-break-lines-modes mode)))
 
-;; Child frame
-(when (childframe-workable-p)
-  (use-package posframe
-    :hook ((after-load-theme . posframe-delete-all)
-           ((after-load-theme server-after-make-frame) . my-set-posframe-faces))
-    :init
-    (defface posframe-border
-      `((t (:background ,(face-foreground 'shadow nil t))))
-      "Face used by the `posframe' border."
-      :group 'posframe)
+;; Transient
+(when (childframe-completion-workable-p)
+  ;; Display transient in child frame
+  (use-package transient-posframe
+    :diminish
+    :custom-face
+    (transient-posframe ((t (:inherit tooltip))))
+    (transient-posframe-border ((t (:inherit posframe-border :background unspecified))))
+    :hook (after-init . transient-posframe-mode)
+    :init (setq transient-mode-line-format nil
+                transient-posframe-border-width posframe-border-width
+                transient-posframe-poshandler 'posframe-poshandler-frame-center
+                transient-posframe-parameters '((left-fringe . 8)
+                                                (right-fringe . 8)))))
 
-    (defun my-set-posframe-faces ()
-      "Set `posframe' faces."
-      (custom-set-faces
-       `(posframe-border ((t (:background ,(face-foreground 'shadow nil t)))))))
-
-    (with-eval-after-load 'persp-mode
-      (add-hook 'persp-load-buffer-functions
-                (lambda (&rest _)
-                  (posframe-delete-all))))
-    :config
-    (with-no-warnings
-      (defun my-posframe--prettify-frame (&rest _)
-        (set-face-background 'fringe nil posframe--frame))
-      (advice-add #'posframe--create-posframe :after #'my-posframe--prettify-frame)
-
-      (defun posframe-poshandler-frame-center-near-bottom (info)
-        (cons (/ (- (plist-get info :parent-frame-width)
-                    (plist-get info :posframe-width))
-                 2)
-              (/ (+ (plist-get info :parent-frame-height)
-                    (* 2 (plist-get info :font-height)))
-                 2))))))
-
+;; For macOS
 (with-no-warnings
   (when sys/macp
     ;; Render thinner fonts
@@ -454,12 +385,8 @@
     ;; Don't open a file in a new frame
     (setq ns-pop-up-frames nil)))
 
-;; Don't use GTK+ tooltip
-(when (boundp 'x-gtk-use-system-tooltips)
-  (setq x-gtk-use-system-tooltips nil))
-
 ;; Ligatures support
-(when (and emacs/>=28p (not centaur-prettify-symbols-alist))
+(unless centaur-prettify-symbols-alist
   (use-package composite
     :ensure nil
     :init (defvar composition-ligature-table (make-char-table nil))

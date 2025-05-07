@@ -1,10 +1,10 @@
 ;;; init.el --- A Fancy and Fast Emacs Configuration.	-*- lexical-binding: t no-byte-compile: t -*-
 
-;; Copyright (C) 2006-2022 Vincent Zhang
+;; Copyright (C) 2006-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
-;; Version: 6.0.0
+;; Version: 8.2.0
 ;; Keywords: .emacs.d centaur
 
 ;;
@@ -50,37 +50,34 @@
 
 ;;; Code:
 
-(when (version< emacs-version "26.1")
-  (error "This requires Emacs 26.1 and above!"))
+(when (version< emacs-version "28.1")
+  (error "This requires Emacs 28.1 and above!"))
 
+;;
 ;; Speed up startup
+;;
+
+;; Defer garbage collection further back in the startup process
+(setq gc-cons-threshold most-positive-fixnum)
+
+;; Prevent flashing of unstyled modeline at startup
+(setq-default mode-line-format nil)
+
+;; Don't pass case-insensitive to `auto-mode-alist'
 (setq auto-mode-case-fold nil)
 
 (unless (or (daemonp) noninteractive init-file-debug)
-  (let ((old-file-name-handler-alist file-name-handler-alist))
+  ;; Suppress file handlers operations at startup
+  ;; `file-name-handler-alist' is consulted on each call to `require' and `load'
+  (let ((old-value file-name-handler-alist))
     (setq file-name-handler-alist nil)
+    (set-default-toplevel-value 'file-name-handler-alist file-name-handler-alist)
     (add-hook 'emacs-startup-hook
               (lambda ()
                 "Recover file name handlers."
                 (setq file-name-handler-alist
-                      (delete-dups (append file-name-handler-alist
-                                           old-file-name-handler-alist)))))))
-
-;; Defer garbage collection further back in the startup process
-(setq gc-cons-threshold most-positive-fixnum)
-(add-hook 'emacs-startup-hook
-          (lambda ()
-            "Recover GC values after startup."
-            (setq gc-cons-threshold 800000)))
-
-;; Suppress flashing at startup
-(setq-default inhibit-redisplay t
-              inhibit-message t)
-(add-hook 'window-setup-hook
-          (lambda ()
-            (setq-default inhibit-redisplay nil
-                          inhibit-message nil)
-            (redisplay)))
+                      (delete-dups (append file-name-handler-alist old-value))))
+              101)))
 
 ;; Load path
 ;; Optimize: Force "lisp"" and "site-lisp" at the head to reduce the startup time.
@@ -93,7 +90,7 @@
   "Add subdirectories to `load-path'.
 
 Don't put large files in `site-lisp' directory, e.g. EAF.
-Otherwise the startup will be very slow. "
+Otherwise the startup will be very slow."
   (let ((default-directory (expand-file-name "site-lisp" user-emacs-directory)))
     (normal-top-level-add-subdirs-to-load-path)))
 
@@ -102,19 +99,23 @@ Otherwise the startup will be very slow. "
 
 (update-load-path)
 
+;; Requisites
+(require 'init-const)
+(require 'init-custom)
+(require 'init-funcs)
+
 ;; Packages
 ;; Without this comment Emacs25 adds (package-initialize) here
 (require 'init-package)
 
 ;; Preferences
-(require 'init-basic)
+(require 'init-base)
 (require 'init-hydra)
 
 (require 'init-ui)
 (require 'init-edit)
-(require 'init-ivy)
-(require 'init-company)
-(require 'init-yasnippet)
+(require 'init-completion)
+(require 'init-snippet)
 
 (require 'init-bookmark)
 (require 'init-calendar)
@@ -123,7 +124,7 @@ Otherwise the startup will be very slow. "
 (require 'init-highlight)
 (require 'init-ibuffer)
 (require 'init-kill-ring)
-(require 'init-persp)
+(require 'init-workspace)
 (require 'init-window)
 (require 'init-treemacs)
 
@@ -141,10 +142,9 @@ Otherwise the startup will be very slow. "
 
 ;; Programming
 (require 'init-vcs)
-(require 'init-flycheck)
-(require 'init-projectile)
+(require 'init-check)
 (require 'init-lsp)
-(require 'init-ctags)
+(require 'init-dap)
 
 (require 'init-prog)
 (require 'init-elisp)
@@ -153,7 +153,6 @@ Otherwise the startup will be very slow. "
 (require 'init-rust)
 (require 'init-python)
 (require 'init-ruby)
-(require 'init-dart)
 (require 'init-elixir)
 (require 'init-web)
 (require 'init-erlang)

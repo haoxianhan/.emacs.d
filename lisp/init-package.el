@@ -1,6 +1,6 @@
 ;;; init-package.el --- Initialize package configurations.	-*- lexical-binding: t -*-
 
-;; Copyright (C) 2006-2022 Vincent Zhang
+;; Copyright (C) 2006-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
@@ -30,9 +30,10 @@
 
 ;;; Code:
 
-(require 'init-const)
-(require 'init-custom)
-(require 'init-funcs)
+(eval-when-compile
+  (require 'init-const)
+  (require 'init-custom)
+  (require 'init-funcs))
 
 ;; At first startup
 (when (and (file-exists-p centaur-custom-example-file)
@@ -56,10 +57,10 @@
          (load centaur-custom-post-file))))
 (add-hook 'after-init-hook #'load-custom-post-file)
 
-;; HACK: DO NOT save package-selected-packages to `custom-file'.
-;; https://github.com/jwiegley/use-package/issues/383#issuecomment-247801751
+;; HACK: DO NOT save `package-selected-packages' to `custom-file'
+;; @see https://github.com/jwiegley/use-package/issues/383#issuecomment-247801751
 (defun my-package--save-selected-packages (&optional value)
-  "Set `package-selected-packages' to VALUE but don't save to `custom-file'."
+  "Set `package-selected-packages' to VALUE but don't save to option `custom-file'."
   (when value
     (setq package-selected-packages value))
   (unless after-init-time
@@ -74,67 +75,33 @@
   (setq package-enable-at-startup nil)          ; To prevent initializing twice
   (package-initialize))
 
+;; More options
+(setq package-install-upgrade-built-in t)
+
 ;; Setup `use-package'
 (unless (package-installed-p 'use-package)
   (package-refresh-contents)
   (package-install 'use-package))
 
 ;; Should set before loading `use-package'
-(eval-and-compile
-  (setq use-package-always-ensure t)
-  (setq use-package-always-defer t)
-  (setq use-package-expand-minimally t)
-  (setq use-package-enable-imenu-support t))
-
-(eval-when-compile
-  (require 'use-package))
+(setq use-package-always-ensure t
+      use-package-always-defer t
+      use-package-expand-minimally t
+      use-package-enable-imenu-support t)
 
 ;; Required by `use-package'
-(use-package diminish)
-(use-package bind-key)
+(use-package diminish :ensure t)
 
 ;; Update GPG keyring for GNU ELPA
 (use-package gnu-elpa-keyring-update)
 
-;; A modern Packages Menu
-(use-package paradox
-  :custom-face
-  (paradox-archive-face ((t (:inherit font-lock-doc-face))))
-  (paradox-description-face ((t (:inherit completions-annotations))))
-  :hook (after-init . paradox-enable)
-  :init (setq paradox-execute-asynchronously t
-              paradox-github-token t
-              paradox-display-star-count nil
-              paradox-status-face-alist ;
-              '(("built-in"   . font-lock-builtin-face)
-                ("available"  . success)
-                ("new"        . (success bold))
-                ("held"       . font-lock-constant-face)
-                ("disabled"   . font-lock-warning-face)
-                ("avail-obso" . font-lock-comment-face)
-                ("installed"  . font-lock-comment-face)
-                ("dependency" . font-lock-comment-face)
-                ("incompat"   . font-lock-comment-face)
-                ("deleted"    . font-lock-comment-face)
-                ("unsigned"   . font-lock-warning-face)))
-  :config
-  (add-hook 'paradox-after-execute-functions
-            (lambda (_)
-              "Display `page-break-lines' in \"*Paradox Report*\" buffer."
-              (when (fboundp 'page-break-lines-mode)
-                (let ((buf (get-buffer "*Paradox Report*"))
-                      (inhibit-read-only t))
-                  (when (buffer-live-p buf)
-                    (with-current-buffer buf
-                      (page-break-lines-mode 1))))))
-            t))
-
-;; Auto update packages
-(use-package auto-package-update
-  :init
-  (setq auto-package-update-delete-old-versions t
-        auto-package-update-hide-results t)
-  (defalias 'upgrade-packages #'auto-package-update-now))
+;; Update packages
+(unless (fboundp 'package-upgrade-all)
+  (use-package auto-package-update
+    :init
+    (setq auto-package-update-delete-old-versions t
+          auto-package-update-hide-results t)
+    (defalias 'package-upgrade-all #'auto-package-update-now)))
 
 (provide 'init-package)
 

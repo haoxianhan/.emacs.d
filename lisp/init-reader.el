@@ -1,6 +1,6 @@
 ;; init-reader.el --- Initialize readers.	-*- lexical-binding: t -*-
 
-;; Copyright (C) 2019-2022 Vincent Zhang
+;; Copyright (C) 2019-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
@@ -30,7 +30,8 @@
 
 ;;; Code:
 
-(require 'init-const)
+(eval-when-compile
+  (require 'init-const))
 
 (bind-key "M-<f7>" #'centaur-read-mode)
 
@@ -57,7 +58,8 @@
 
     ;; Recover last viewed position
     (use-package saveplace-pdf-view
-      :commands (saveplace-pdf-view-find-file-advice saveplace-pdf-view-to-alist-advice)
+      :when (ignore-errors (pdf-info-check-epdfinfo) t)
+      :autoload (saveplace-pdf-view-find-file-advice saveplace-pdf-view-to-alist-advice)
       :init
       (advice-add 'save-place-find-file-hook :around #'saveplace-pdf-view-find-file-advice)
       (advice-add 'save-place-to-alist :around #'saveplace-pdf-view-to-alist-advice))))
@@ -87,15 +89,14 @@
 
   ;; Fix encoding issue on Windows
   (when sys/win32p
-    (setq process-coding-system-alist
-          (cons `(,nov-unzip-program . (gbk . gbk))
-                process-coding-system-alist))))
+    (add-to-list 'process-coding-system-alist
+                 `(,nov-unzip-program . (gbk . gbk)))))
 
 ;; Atom/RSS reader
 (use-package elfeed
   :pretty-hydra
-  ((:title (pretty-hydra-title "Elfeed" 'faicon "rss-square" :face 'all-the-icons-orange :height 1.1 :v-adjust -0.05)
-    :color amaranth :quit-key "q")
+  ((:title (pretty-hydra-title "Elfeed" 'faicon "nf-fa-rss_square" :face 'nerd-icons-orange)
+    :color amaranth :quit-key ("q" "C-g"))
    ("Search"
     (("c" elfeed-db-compact "compact db")
      ("g" elfeed-search-update--force "refresh")
@@ -137,6 +138,55 @@
   ;; Ignore db directory in recentf
   (push elfeed-db-directory recentf-exclude)
 
+  ;; Add icons via tags
+  (when (icons-displayable-p)
+    (defun nerd-icon-for-tags (tags)
+      "Generate Nerd Font icon based on tags.
+  Returns default if no match."
+      (cond ((member "youtube" tags)  (nerd-icons-faicon "nf-fa-youtube_play" :face '(:foreground "#FF0200")))
+            ((member "instagram" tags) (nerd-icons-faicon "nf-fa-instagram" :face '(:foreground "#FF00B9")))
+            ((or (member "emacs" tags) (member "emacslife" tags) (member "mastering" tags))
+             (nerd-icons-sucicon "nf-custom-emacs" :face '(:foreground "#9A5BBE")))
+            ((member "github" tags) (nerd-icons-faicon "nf-fa-github"))
+            (t (nerd-icons-faicon "nf-fae-feedly" :face '(:foreground "#2AB24C")))))
+
+    (defun lucius/elfeed-search-print-entry--better-default (entry)
+      "Print ENTRY to the buffer."
+      (let* ((date (elfeed-search-format-date (elfeed-entry-date entry)))
+             (date-width (car (cdr elfeed-search-date-format)))
+             (title (concat (or (elfeed-meta entry :title)
+                                (elfeed-entry-title entry) "")
+                            ;; NOTE: insert " " for overlay to swallow
+                            " "))
+             (title-faces (elfeed-search--faces (elfeed-entry-tags entry)))
+             (feed (elfeed-entry-feed entry))
+             (feed-title (when feed (or (elfeed-meta feed :title) (elfeed-feed-title feed))))
+             (tags (mapcar #'symbol-name (elfeed-entry-tags entry)))
+             (tags-str (mapconcat (lambda (s) (propertize s 'face 'elfeed-search-tag-face)) tags ","))
+             (title-width (- (frame-width)
+                             ;; (window-width (get-buffer-window (elfeed-search-buffer) t))
+                             date-width elfeed-search-trailing-width))
+             (title-column (elfeed-format-column
+                            title (elfeed-clamp
+                                   elfeed-search-title-min-width
+                                   title-width
+                                   elfeed-search-title-max-width) :left))
+
+             ;; Title/Feed ALIGNMENT
+             (align-to-feed-pixel (+ date-width
+                                     (max elfeed-search-title-min-width
+                                          (min title-width elfeed-search-title-max-width)))))
+        (insert (propertize date 'face 'elfeed-search-date-face) " ")
+        (insert (propertize title-column 'face title-faces 'kbd-help title))
+        (put-text-property (1- (point)) (point) 'display `(space :align-to ,align-to-feed-pixel))
+        ;; (when feed-title (insert " " (propertize feed-title 'face 'elfeed-search-feed-face) " "))
+        (when feed-title
+          (insert " " (concat (nerd-icon-for-tags tags) " ")
+                  (propertize feed-title 'face 'elfeed-search-feed-face) " "))
+        (when tags (insert "(" tags-str ")"))))
+
+    (setq  elfeed-search-print-entry-function #'lucius/elfeed-search-print-entry--better-default))
+
   ;; Use xwidget if possible
   (with-no-warnings
     (defun my-elfeed-show-visit (&optional use-generic-p)
@@ -147,12 +197,9 @@ browser defined by `browse-url-generic-program'."
       (let ((link (elfeed-entry-link elfeed-show-entry)))
         (when link
           (message "Sent to browser: %s" link)
-          (cond
-           ((featurep 'xwidget-internal)
-            (centaur-webkit-browse-url link))
-           (use-generic-p
-            (browse-url-generic link))
-           (t (browse-url link))))))
+          (if use-generic-p
+              (browse-url-generic link)
+            (centaur-browse-url link)))))
     (advice-add #'elfeed-show-visit :override #'my-elfeed-show-visit)
 
     (defun my-elfeed-search-browse-url (&optional use-generic-p)
@@ -164,12 +211,9 @@ browser defined by `browse-url-generic-program'."
         (cl-loop for entry in entries
                  do (elfeed-untag entry 'unread)
                  when (elfeed-entry-link entry)
-                 do (cond
-                     ((featurep 'xwidget-internal)
-                      (centaur-webkit-browse-url it t))
-                     (use-generic-p
-                      (browse-url-generic it))
-                     (t (browse-url it))))
+                 do (if use-generic-p
+                        (browse-url-generic it)
+                      (centaur-browse-url it)))
         (mapc #'elfeed-search-update-entry entries)
         (unless (or elfeed-search-remain-on-entry (use-region-p))
           (forward-line))))

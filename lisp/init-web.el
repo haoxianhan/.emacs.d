@@ -1,6 +1,6 @@
 ;; init-web.el --- Initialize web configurations.	-*- lexical-binding: t -*-
 
-;; Copyright (C) 2016-2022 Vincent Zhang
+;; Copyright (C) 2016-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
@@ -30,7 +30,16 @@
 
 ;;; Code:
 
-(require 'init-custom)
+(eval-when-compile
+  (require 'init-custom))
+
+;; eww
+(use-package eww
+  :ensure nil
+  :init
+  ;; Install: npm install -g readability-cli
+  (when (executable-find "readable")
+    (setq eww-retrieve-command '("readable"))))
 
 ;; Webkit browser
 (use-package xwidget
@@ -40,8 +49,8 @@
          :map xwidget-webkit-mode-map
          ("h"         . xwidget-hydra/body))
   :pretty-hydra
-  ((:title (pretty-hydra-title "Webkit" 'faicon "chrome" :face 'all-the-icons-blue)
-    :color amaranth :quit-key "q")
+  ((:title (pretty-hydra-title "Webkit" 'faicon "nf-fa-chrome" :face 'nerd-icons-blue)
+    :color amaranth :quit-key ("q" "C-g"))
    ("Navigate"
     (("b" xwidget-webkit-back "back")
      ("f" xwidget-webkit-forward "forward")
@@ -59,91 +68,40 @@
      ("v" xwwp-follow-link "follow link" :exit t)
      ("w" xwidget-webkit-current-url-message-kill "copy url" :exit t)
      ("?" describe-mode "help" :exit t)
-     ("Q" quit-window "quit" :exit t))))
-  :init
-  ;; Link navigation
-  (use-package xwwp-follow-link-ivy
-    :after ivy
-    :bind (("C-c C-z x" . xwwp)
-           :map xwidget-webkit-mode-map
-           ("v"         . xwwp-follow-link))
-    :init (setq xwwp-follow-link-completion-system 'ivy)))
+     ("Q" quit-window "quit" :exit t)))))
 
-;; CSS mode
+;; CSS
 (use-package css-mode
-  :ensure nil
   :init (setq css-indent-offset 2))
 
-;; SCSS mode
+;; SCSS
 (use-package scss-mode
-  :init
-  ;; Disable complilation on save
-  (setq scss-compile-at-save nil))
+  :init (setq scss-compile-at-save nil))
 
-;; New `less-css-mde' in Emacs 26
+;; LESS
 (unless (fboundp 'less-css-mode)
   (use-package less-css-mode))
 
-;; JSON mode
-(use-package json-mode)
-
 ;; JavaScript
-(use-package js2-mode
-  :defines flycheck-javascript-eslint-executable
-  :mode (("\\.js\\'" . js2-mode)
-         ("\\.jsx\\'" . js2-jsx-mode))
-  :interpreter (("node" . js2-mode)
-                ("node" . js2-jsx-mode))
-  :hook ((js2-mode . js2-imenu-extras-mode)
-         (js2-mode . js2-highlight-unused-variables-mode))
-  :init (setq js-indent-level 2)
-  :config
-  ;; Use default keybindings for lsp
-  (when centaur-lsp
-    (unbind-key "M-." js2-mode-map))
+(use-package js
+  :init (setq js-indent-level 2))
 
-  (with-eval-after-load 'flycheck
-    (when (or (executable-find "eslint_d")
-              (executable-find "eslint")
-              (executable-find "jshint"))
-      (setq js2-mode-show-strict-warnings nil))
-    (when (executable-find "eslint_d")
-      ;; https://github.com/mantoni/eslint_d.js
-      ;; Install: npm -i -g eslint_d
-      (setq flycheck-javascript-eslint-executable "eslint_d")))
-
-  (use-package js2-refactor
-    :diminish
-    :hook (js2-mode . js2-refactor-mode)
-    :config (js2r-add-keybindings-with-prefix "C-c C-m")))
+;; JSON
+(unless (fboundp 'js-json-mode)
+  (use-package json-mode))
 
 ;; Format HTML, CSS and JavaScript/JSON
 ;; Install: npm -g install prettier
-(use-package prettier-js
-  :diminish
-  :hook ((js-mode js2-mode json-mode web-mode css-mode sgml-mode html-mode)
-         .
-         prettier-js-mode))
+(when (executable-find "prettier")
+  (use-package prettier
+    :diminish
+    :hook ((js-base-mode css-mode sgml-mode web-mode) . prettier-mode)
+    :init (setq prettier-pre-warm 'none)))
 
-;; Live browser JavaScript, CSS, and HTML interaction
-(use-package skewer-mode
-  :diminish
-  :hook (((js-mode js2-mode)   . skewer-mode)
-         (css-mode             . skewer-css-mode)
-         ((html-mode web-mode) . skewer-html-mode))
-  :init
-  ;; diminish
-  (with-eval-after-load 'skewer-css
-    (diminish 'skewer-css-mode))
-  (with-eval-after-load 'skewer-html
-    (diminish 'skewer-html-mode)))
-
-(use-package typescript-mode
-  :mode ("\\.ts[x]\\'" . typescript-mode))
-
-;; Run Mocha or Jasmine tests
-(use-package mocha
-  :config (use-package mocha-snippets))
+;; Typescript
+(unless (and (centaur-treesit-available-p)
+             (fboundp 'typescript-ts-mode))
+  (use-package typescript-mode))
 
 ;; Major mode for CoffeeScript code
 (use-package coffee-mode
@@ -159,7 +117,7 @@
 
 ;; Adds node_modules/.bin directory to `exec_path'
 (use-package add-node-modules-path
-  :hook ((web-mode js-mode js2-mode) . add-node-modules-path))
+  :hook ((web-mode js-base-mode) . add-node-modules-path))
 
 (use-package haml-mode)
 (use-package php-mode)
@@ -170,12 +128,7 @@
   :config
   (use-package restclient-test
     :diminish
-    :hook (restclient-mode . restclient-test-mode))
-
-  (with-eval-after-load 'company
-    (use-package company-restclient
-      :defines company-backends
-      :init (add-to-list 'company-backends 'company-restclient))))
+    :hook (restclient-mode . restclient-test-mode)))
 
 (provide 'init-web)
 

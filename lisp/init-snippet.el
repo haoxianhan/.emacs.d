@@ -1,6 +1,6 @@
-;; init-dart.el --- Initialize Dart configurations.	-*- lexical-binding: t -*-
+;; init-snippet.el --- Initialize snippet configurations.	-*- lexical-binding: t -*-
 
-;; Copyright (C) 2019-2022 Vincent Zhang
+;; Copyright (C) 2006-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
@@ -25,20 +25,24 @@
 
 ;;; Commentary:
 ;;
-;; Dart configurations.
+;; Snippet configurations.
 ;;
 
 ;;; Code:
 
-;; Dart
-(use-package dart-mode
-  :defines (projectile-project-root-files-bottom-up)
-  :config
-  (with-eval-after-load 'projectile
-    (add-to-list 'projectile-project-root-files-bottom-up "pubspec.yaml")
-    (add-to-list 'projectile-project-root-files-bottom-up "BUILD")))
+;; Yet another snippet extension
+(use-package yasnippet
+  :diminish yas-minor-mode
+  :hook (after-init . yas-global-mode))
 
-(provide 'init-dart)
+;; Collection of yasnippet snippets
+(use-package yasnippet-snippets)
+
+;; Yasnippet Completion At Point Function
+(use-package yasnippet-capf
+  :init (add-to-list 'completion-at-point-functions #'yasnippet-capf))
+
+(provide 'init-snippet)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; init-dart.el ends here
+;;; init-snippet.el ends here

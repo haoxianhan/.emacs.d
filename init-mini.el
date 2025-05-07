@@ -1,10 +1,10 @@
 ;;; init-mini.el --- Centaur Emacs minimal configurations.	-*- lexical-binding: t no-byte-compile: t -*-
 
-;; Copyright (C) 2018-2022 Vincent Zhang
+;; Copyright (C) 2018-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
-;; Version: 1.1.0
+;; Version: 1.2.0
 ;; Keywords: .emacs.d centaur
 
 ;; This file is not part of GNU Emacs.
@@ -88,12 +88,16 @@
 ;;   (global-linum-mode 1))
 
 ;; Basic modes
-(recentf-mode 1)
-(ignore-errors (savehist-mode 1))
-(save-place-mode 1)
 (show-paren-mode 1)
 (delete-selection-mode 1)
 (global-auto-revert-mode 1)
+(recentf-mode 1)
+(when (fboundp 'savehist-mode)
+  (savehist-mode 1))
+(if (fboundp 'save-place-mode)
+    (save-place-mode 1)
+  (require 'saveplace)
+  (setq-default save-place t))
 
 (setq electric-pair-inhibit-predicate 'electric-pair-conservative-inhibit)
 (electric-pair-mode 1)
@@ -102,6 +106,9 @@
 (add-hook 'minibuffer-setup-hook #'subword-mode)
 
 ;; Completion
+(when (fboundp 'global-completion-preview-mode)
+  (global-completion-preview-mode 1))
+
 (if (fboundp 'fido-mode)
     (progn
       (fido-mode 1)
@@ -153,7 +160,6 @@
   (global-set-key [(super z)] #'undo)))
 
 ;; Keybindings
-(global-set-key (kbd "C-.") #'imenu)
 (global-set-key (kbd "<C-return>") #'rectangle-mark-mode)
 
 (defun revert-current-buffer ()

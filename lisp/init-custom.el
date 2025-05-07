@@ -1,6 +1,6 @@
 ;; init-custom.el --- Define customizations.	-*- lexical-binding: t -*-
 
-;; Copyright (C) 2006-2022 Vincent Zhang
+;; Copyright (C) 2006-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
@@ -30,6 +30,9 @@
 
 ;;; Code:
 
+(eval-when-compile
+  (require 'package))
+
 (defgroup centaur nil
   "Centaur Emacs customization."
   :group 'convenience
@@ -52,17 +55,17 @@
   :group 'centaur
   :type 'string)
 
-(defcustom centaur-org-directory (expand-file-name "~/org/")
+(defcustom centaur-org-directory (expand-file-name "~/org")
   "Set org directory."
   :group 'centaur
   :type 'string)
 
-(defcustom centaur-proxy "127.0.0.1:1087"
+(defcustom centaur-proxy "127.0.0.1:7897"
   "Set HTTP/HTTPS proxy."
   :group 'centaur
   :type 'string)
 
-(defcustom centaur-socks-proxy "127.0.0.1:1086"
+(defcustom centaur-socks-proxy "127.0.0.1:7897"
   "Set SOCKS proxy."
   :group 'centaur
   :type 'string)
@@ -72,7 +75,7 @@
   :group 'centaur
   :type 'boolean)
 
-(defcustom centaur-icon (or (display-graphic-p) (daemonp))
+(defcustom centaur-icon t
   "Display icons or not."
   :group 'centaur
   :type 'boolean)
@@ -80,27 +83,28 @@
 ;; Emacs Lisp Package Archive (ELPA)
 ;; @see https://github.com/melpa/melpa and https://elpa.emacs-china.org/.
 (defcustom centaur-package-archives-alist
-  '((melpa    . (("gnu"    . "http://elpa.gnu.org/packages/")
-                 ("nongnu" . "http://elpa.nongnu.org/nongnu/")
-                 ("melpa"  . "http://melpa.org/packages/")))
-    (emacs-cn . (("gnu"    . "http://1.15.88.122/gnu/")
-                 ("nongnu" . "http://1.15.88.122/nongnu/")
-                 ("melpa"  . "http://1.15.88.122/melpa/")))
-    (bfsu     . (("gnu"    . "http://mirrors.bfsu.edu.cn/elpa/gnu/")
-                 ("nongnu" . "http://mirrors.bfsu.edu.cn/elpa/nongnu/")
-                 ("melpa"  . "http://mirrors.bfsu.edu.cn/elpa/melpa/")))
-    (netease  . (("gnu"    . "http://mirrors.163.com/elpa/gnu/")
-                 ("nongnu" . "http://mirrors.163.com/elpa/nongnu/")
-                 ("melpa"  . "http://mirrors.163.com/elpa/melpa/")))
-    (sjtu     . (("gnu"    . "http://mirrors.sjtug.sjtu.edu.cn/emacs-elpa/gnu/")
-                 ("nongnu" . "http://mirrors.sjtug.sjtu.edu.cn/emacs-elpa/nongnu/")
-                 ("melpa"  . "http://mirrors.sjtug.sjtu.edu.cn/emacs-elpa/melpa/")))
-    (tuna     . (("gnu"    . "http://mirrors.tuna.tsinghua.edu.cn/elpa/gnu/")
-                 ("nongnu" . "http://mirrors.tuna.tsinghua.edu.cn/elpa/nongnu/")
-                 ("melpa"  . "http://mirrors.tuna.tsinghua.edu.cn/elpa/melpa/")))
-    (ustc     . (("gnu"    . "http://mirrors.ustc.edu.cn/elpa/gnu/")
-                 ("nongnu" . "http://mirrors.ustc.edu.cn/elpa/nongnu/")
-                 ("melpa"  . "http://mirrors.ustc.edu.cn/elpa/melpa/"))))
+  (let ((proto (if (gnutls-available-p) "https" "http")))
+    `((melpa    . (("gnu"    . ,(format "%s://elpa.gnu.org/packages/" proto))
+                   ("nongnu" . ,(format "%s://elpa.nongnu.org/nongnu/" proto))
+                   ("melpa"  . ,(format "%s://melpa.org/packages/" proto))))
+      (bfsu     . (("gnu"    . ,(format "%s://mirrors.bfsu.edu.cn/elpa/gnu/" proto))
+                   ("nongnu" . ,(format "%s://mirrors.bfsu.edu.cn/elpa/nongnu/" proto))
+                   ("melpa"  . ,(format "%s://mirrors.bfsu.edu.cn/elpa/melpa/" proto))))
+      (iscas    . (("gnu"    . ,(format "%s://mirror.iscas.ac.cn/elpa/gnu/" proto))
+                   ("nongnu" . ,(format "%s://mirror.iscas.ac.cn/elpa/nongnu/" proto))
+                   ("melpa"  . ,(format "%s://mirror.iscas.ac.cn/elpa/melpa/" proto))))
+      (netease  . (("gnu"    . ,(format "%s://mirrors.163.com/elpa/gnu/" proto))
+                   ("nongnu" . ,(format "%s://mirrors.163.com/elpa/nongnu/" proto))
+                   ("melpa"  . ,(format "%s://mirrors.163.com/elpa/melpa/" proto))))
+      (sjtu     . (("gnu"    . ,(format "%s://mirrors.sjtug.sjtu.edu.cn/emacs-elpa/gnu/" proto))
+                   ("nongnu" . ,(format "%s://mirrors.sjtug.sjtu.edu.cn/emacs-elpa/nongnu/" proto))
+                   ("melpa"  . ,(format "%s://mirrors.sjtug.sjtu.edu.cn/emacs-elpa/melpa/" proto))))
+      (tuna     . (("gnu"    . ,(format "%s://mirrors.tuna.tsinghua.edu.cn/elpa/gnu/" proto))
+                   ("nongnu" . ,(format "%s://mirrors.tuna.tsinghua.edu.cn/elpa/nongnu/" proto))
+                   ("melpa"  . ,(format "%s://mirrors.tuna.tsinghua.edu.cn/elpa/melpa/" proto))))
+      (ustc     . (("gnu"    . ,(format "%s://mirrors.ustc.edu.cn/elpa/gnu/" proto))
+                   ("nongnu" . ,(format "%s://mirrors.ustc.edu.cn/elpa/nongnu/" proto))
+                   ("melpa"  . ,(format "%s://mirrors.ustc.edu.cn/elpa/melpa/" proto))))))
   "A list of the package archives."
   :group 'centaur
   :type '(alist :key-type (symbol :tag "Archive group name")
@@ -126,7 +130,7 @@
 (defcustom centaur-theme-alist
   '((default . doom-one)
     (pro     . doom-monokai-pro)
-    (dark    . doom-nord-aurora)
+    (dark    . doom-vibrant)
     (light   . doom-one-light)
     (warm    . doom-solarized-light)
     (cold    . doom-palenight)
@@ -142,7 +146,7 @@
   "List of themes mapped to the time they should be loaded.
 
 The keywords `:sunrise' and `:sunset' can be used for the time
-if `calendar-latitude' and `calendar-longitude' are set.
+if the option `calendar-latitude' and option `calendar-longitude' are set.
 For example:
   \\='((:sunrise . doom-one-light)
     (:sunset  . doom-one))"
@@ -150,8 +154,8 @@ For example:
   :type '(alist :key-type (string :tag "Time")
                 :value-type (symbol :tag "Theme")))
 
-(defcustom centaur-system-themes '((light . doom-one-light)
-				                   (dark  . doom-one))
+(defcustom centaur-system-themes '((dark  . doom-one)
+                                   (light . doom-one-light))
   "List of themes related the system appearance.
 
 It's only available on macOS currently."
@@ -164,9 +168,7 @@ It's only available on macOS currently."
   :group 'centaur
   :type `(choice (const :tag "Auto" auto)
                  (const :tag "Random" random)
-                 ,(if (boundp 'ns-system-appearance)
-                      '(const :tag "System" system)
-                    "")
+                 (const :tag "System" system)
                  ,@(mapcar
                     (lambda (item)
                       (let ((name (car item)))
@@ -182,47 +184,45 @@ It's only available on macOS currently."
   :type '(choice (const :tag "Minibuffer" minibuffer)
                  (const :tag "Child Frame" childframe)))
 
+(defcustom centaur-frame-maximized-on-startup nil
+  "Maximize frame on startup or not."
+  :group 'centaur
+  :type 'boolean)
+
 (defcustom centaur-dashboard (not (daemonp))
   "Display dashboard at startup or not.
 If Non-nil, use dashboard, otherwise will restore previous session."
   :group 'centaur
   :type 'boolean)
 
-(defcustom centaur-restore-frame-geometry t
-  "Restore the frame's geometry at startup.
-If Non-nil, save and restore the frame's geometry."
-  :group 'centaur
-  :type 'boolean)
-
-(defcustom centaur-lsp 'lsp-mode
+(defcustom centaur-lsp 'eglot
   "Set language server.
 
 `lsp-mode': See https://github.com/emacs-lsp/lsp-mode.
 `eglot': See https://github.com/joaotavora/eglot.
-tags: Use tags file instead of language server. See https://github.com/universal-ctags/citre.
 nil means disabled."
   :group 'centaur
   :type '(choice (const :tag "LSP Mode" lsp-mode)
                  (const :tag "Eglot" eglot)
                  (const :tag "Disable" nil)))
 
-(defcustom centaur-tree-sitter nil
-  "Enable `tree-sitter' or not."
+(defcustom centaur-tree-sitter t
+  "Enable tree-sitter or not.
+Native tree-sitter is introduced in 29."
+  :group 'centaur
+  :type 'boolean)
+
+(defcustom centaur-lsp-format-on-save nil
+  "Auto format buffers on save."
   :group 'centaur
   :type 'boolean)
 
 (defcustom centaur-lsp-format-on-save-ignore-modes
   '(c-mode c++-mode python-mode markdown-mode)
   "The modes that don't auto format and organize imports while saving the buffers.
-`prog-mode' means ignoring all derived modes.
-"
+`prog-mode' means ignoring all derived modes."
   :group 'centaur
   :type '(repeat (symbol :tag "Major-Mode")))
-
-(defcustom centaur-tree-sitter t
-  "Enable `tree-sitter' or not."
-  :group 'centaur
-  :type 'boolean)
 
 (defcustom centaur-chinese-calendar nil
   "Enable Chinese calendar or not."

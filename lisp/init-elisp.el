@@ -1,6 +1,6 @@
 ;; init-elisp.el --- Initialize Emacs Lisp configurations.	-*- lexical-binding: t -*-
 
-;; Copyright (C) 2006-2022 Vincent Zhang
+;; Copyright (C) 2006-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
@@ -30,25 +30,14 @@
 
 ;;; Code:
 
-(require 'init-custom)
-(require 'init-funcs)
-
 ;; Emacs lisp mode
 (use-package elisp-mode
   :ensure nil
-  :defines flycheck-disabled-checkers
   :bind (:map emacs-lisp-mode-map
          ("C-c C-x" . ielm)
          ("C-c C-c" . eval-defun)
          ("C-c C-b" . eval-buffer))
-  :hook (emacs-lisp-mode . (lambda ()
-                             "Disable the checkdoc checker."
-                             (setq-local flycheck-disabled-checkers
-                                         '(emacs-lisp-checkdoc))))
   :config
-  (when (boundp 'elisp-flymake-byte-compile-load-path)
-    (add-to-list 'elisp-flymake-byte-compile-load-path load-path))
-
   ;; Syntax highlighting of known Elisp symbols
   (use-package highlight-defined
     :hook ((emacs-lisp-mode inferior-emacs-lisp-mode) . highlight-defined-mode))
@@ -191,7 +180,7 @@ Lisp function does not specify a special indentation."
 
       (let ((orig-point (point)))
         (save-excursion
-          (when-let
+          (when-let*
               ((hook (progn (goto-char (point-min)) (symbol-at-point)))
                (func (when (and
                             (or (re-search-forward (format "^Value:?[\s|\n]") nil t)
@@ -214,16 +203,8 @@ Lisp function does not specify a special indentation."
                 (revert-buffer nil t)))))))
     (bind-key "r" #'remove-hook-at-point help-mode-map)))
 
-;; Show function arglist or variable docstring
-;; `global-eldoc-mode' is enabled by default.
-(use-package eldoc
-  :ensure nil
-  :diminish)
-
 ;; Interactive macro expander
 (use-package macrostep
-  :custom-face
-  (macrostep-expansion-highlight-face ((t (:inherit tooltip :extend t))))
   :bind (:map emacs-lisp-mode-map
          ("C-c e" . macrostep-expand)
          :map lisp-interaction-mode-map
@@ -231,24 +212,20 @@ Lisp function does not specify a special indentation."
 
 ;; A better *Help* buffer
 (use-package helpful
-  :commands helpful--buffer
   :bind (([remap describe-function] . helpful-callable)
          ([remap describe-command]  . helpful-command)
          ([remap describe-variable] . helpful-variable)
          ([remap describe-key]      . helpful-key)
          ([remap describe-symbol]   . helpful-symbol)
+         :map emacs-lisp-mode-map
+         ("C-c C-d"                 . helpful-at-point)
+         :map lisp-interaction-mode-map
          ("C-c C-d"                 . helpful-at-point)
          :map helpful-mode-map
          ("r"                       . remove-hook-at-point))
   :hook (helpful-mode . cursor-sensor-mode) ; for remove-advice button
   :init
   (with-no-warnings
-    (with-eval-after-load 'counsel
-      (setq counsel-describe-function-function #'helpful-callable
-            counsel-describe-variable-function #'helpful-variable
-            counsel-describe-symbol-function #'helpful-symbol
-            counsel-descbinds-function #'helpful-callable))
-
     (with-eval-after-load 'apropos
       ;; patch apropos buttons to call helpful instead of help
       (dolist (fun-bt '(apropos-function apropos-macro apropos-command))
@@ -260,21 +237,9 @@ Lisp function does not specify a special indentation."
         (button-type-put
          var-bt 'action
          (lambda (button)
-           (helpful-variable (button-get button 'apropos-symbol)))))))
-  :config
-  (with-no-warnings
-    ;; Open the buffer in other window
-    (defun my-helpful--navigate (button)
-      "Navigate to the path this BUTTON represents."
-      (find-file-other-window (substring-no-properties (button-get button 'path)))
-      ;; We use `get-text-property' to work around an Emacs 25 bug:
-      ;; http://git.savannah.gnu.org/cgit/emacs.git/commit/?id=f7c4bad17d83297ee9a1b57552b1944020f23aea
-      (-when-let (pos (get-text-property button 'position
-                                         (marker-buffer button)))
-        (helpful--goto-char-widen pos)))
-    (advice-add #'helpful--navigate :override #'my-helpful--navigate)))
+           (helpful-variable (button-get button 'apropos-symbol))))))))
 
-;; For ERT
+;; Integrate Ert-runner
 (use-package overseer
   :diminish
   :hook (emacs-lisp-mode . overseer-mode))

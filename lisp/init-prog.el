@@ -1,6 +1,6 @@
 ;; init-prog.el --- Initialize programming configurations.	-*- lexical-binding: t -*-
 
-;; Copyright (C) 2006-2022 Vincent Zhang
+;; Copyright (C) 2006-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
@@ -30,8 +30,9 @@
 
 ;;; Code:
 
-(require 'init-custom)
-(require 'init-const)
+(eval-when-compile
+  (require 'init-const)
+  (require 'init-custom))
 
 ;; Prettify Symbols
 ;; e.g. display “lambda” as “λ”
@@ -42,30 +43,45 @@
   (setq-default prettify-symbols-alist centaur-prettify-symbols-alist)
   (setq prettify-symbols-unprettify-at-point 'right-edge))
 
-;; Tree-sitter: need dynamic module feature
-(when (and centaur-tree-sitter (functionp 'module-load))
-  (use-package tree-sitter
-    :ensure tree-sitter-langs
-    :diminish
-    :hook ((after-init . global-tree-sitter-mode)
-           (tree-sitter-after-on . tree-sitter-hl-mode))))
+;; Tree-sitter support
+(when (centaur-treesit-available-p)
+  (use-package treesit-auto
+    :hook (after-init . global-treesit-auto-mode)
+    :init (setq treesit-auto-install 'prompt))
+
+  ;; Code folding
+  (use-package treesit-fold-indicators
+    :ensure treesit-fold
+    :hook (after-init . global-treesit-fold-indicators-mode)
+    :init (setq treesit-fold-indicators-priority -1)))
+
+;; Show function arglist or variable docstring
+(use-package eldoc
+  :ensure nil
+  :diminish
+  :config
+  (when (childframe-workable-p)
+    (use-package eldoc-box
+      :diminish (eldoc-box-hover-mode eldoc-box-hover-at-point-mode)
+      :custom
+      (eldoc-box-lighter nil)
+      (eldoc-box-only-multi-line t)
+      (eldoc-box-clear-with-C-g t)
+      :custom-face
+      (eldoc-box-border ((t (:inherit posframe-border :background unspecified))))
+      (eldoc-box-body ((t (:inherit tooltip))))
+      :hook ((eglot-managed-mode . eldoc-box-hover-at-point-mode))
+      :config
+      ;; Prettify `eldoc-box' frame
+      (setf (alist-get 'left-fringe eldoc-box-frame-parameters) 8
+            (alist-get 'right-fringe eldoc-box-frame-parameters) 8))))
 
 ;; Search tool
 (use-package grep
   :ensure nil
-  :commands grep-apply-setting
-  :config
-  (cond
-   ((executable-find "ugrep")
-    (grep-apply-setting
-     'grep-command "ugrep --color=auto -0In -e ")
-    (grep-apply-setting
-     'grep-template "ugrep --color=auto -0In -e <R> <D>")
-    (grep-apply-setting
-     'grep-find-command '("ugrep --color=auto -0Inr -e ''" . 30))
-    (grep-apply-setting
-     'grep-find-template "ugrep <C> -0Inr -e <R> <D>"))
-   ((executable-find "rg")
+  :autoload grep-apply-setting
+  :init
+  (when (executable-find "rg")
     (grep-apply-setting
      'grep-command "rg --color=auto --null -nH --no-heading -e ")
     (grep-apply-setting
@@ -73,58 +89,20 @@
     (grep-apply-setting
      'grep-find-command '("rg --color=auto --null -nH --no-heading -e ''" . 38))
     (grep-apply-setting
-     'grep-find-template "rg --color=auto --null -nH --no-heading -e <R> <D>"))))
+     'grep-find-template "rg --color=auto --null -nH --no-heading -e <R> <D>")))
 
 ;; Cross-referencing commands
 (use-package xref
-  :ensure nil
-  :config
-  (with-no-warnings
-    ;; Use faster search tool
-    (when emacs/>=28p
-      (add-to-list 'xref-search-program-alist
-                   '(ugrep . "xargs -0 ugrep <C> --null -ns -e <R>"))
-      (cond
-       ((executable-find "ugrep")
-        (setq xref-search-program 'ugrep))
-       ((executable-find "rg")
-        (setq xref-search-program 'ripgrep))))
-
-    ;; Select from xref candidates with Ivy
-    (if emacs/>=28p
-        (setq xref-show-definitions-function #'xref-show-definitions-completing-read
-              xref-show-xrefs-function #'xref-show-definitions-completing-read)
-      (use-package ivy-xref
-        :after ivy
-        :init
-        (when emacs/>=27p
-          (setq xref-show-definitions-function #'ivy-xref-show-defs))
-        (setq xref-show-xrefs-function #'ivy-xref-show-xrefs)))))
-
-;; Jump to definition
-(use-package dumb-jump
-  :pretty-hydra
-  ((:title (pretty-hydra-title "Dump Jump" 'faicon "anchor")
-    :color blue :quit-key "q")
-   ("Jump"
-    (("j" dumb-jump-go "Go")
-     ("o" dumb-jump-go-other-window "Go other window")
-     ("e" dumb-jump-go-prefer-external "Go external")
-     ("x" dumb-jump-go-prefer-external-other-window "Go external other window"))
-    "Other"
-    (("i" dumb-jump-go-prompt "Prompt")
-     ("l" dumb-jump-quick-look "Quick look")
-     ("b" dumb-jump-back "Back"))))
-  :bind (("M-g o" . dumb-jump-go-other-window)
-         ("M-g j" . dumb-jump-go)
-         ("M-g i" . dumb-jump-go-prompt)
-         ("M-g x" . dumb-jump-go-prefer-external)
-         ("M-g z" . dumb-jump-go-prefer-external-other-window)
-         ("C-M-j" . dumb-jump-hydra/body))
+  :bind (("M-g ." . xref-find-definitions)
+         ("M-g ," . xref-go-back))
   :init
-  (add-hook 'xref-backend-functions #'dumb-jump-xref-activate)
-  (setq dumb-jump-prefer-searcher 'rg
-        dumb-jump-selector 'ivy))
+  ;; Use faster search tool
+  (when (executable-find "rg")
+    (setq xref-search-program 'ripgrep))
+
+  ;; Select from xref candidates in minibuffer
+  (setq xref-show-definitions-function #'xref-show-definitions-completing-read
+        xref-show-xrefs-function #'xref-show-definitions-completing-read))
 
 ;; Code styles
 (use-package editorconfig
@@ -137,76 +115,73 @@
          ("C-c X"  . quickrun)))
 
 ;; Browse devdocs.io documents using EWW
-(when emacs/>=27p
-  (use-package devdocs
-    :commands (devdocs--installed-docs devdocs--available-docs)
-    :bind (:map prog-mode-map
-           ("M-<f1>" . devdocs-dwim)
-           ("C-h D"  . devdocs-dwim))
-    :init
-    (defconst devdocs-major-mode-docs-alist
-      '((c-mode          . ("c"))
-        (c++-mode        . ("cpp"))
-        (python-mode     . ("python~3.10" "python~2.7"))
-        (ruby-mode       . ("ruby~3.1"))
-        (go-mode         . ("go"))
-        (rustic-mode     . ("rust"))
-        (css-mode        . ("css"))
-        (html-mode       . ("html"))
-        (julia-mode      . ("julia~1.8"))
-        (js-mode         . ("javascript" "jquery"))
-        (js2-mode        . ("javascript" "jquery"))
-        (emacs-lisp-mode . ("elisp")))
-      "Alist of major-mode and docs.")
+(use-package devdocs
+  :autoload (devdocs--installed-docs devdocs--available-docs)
+  :bind (:map prog-mode-map
+         ("M-<f1>" . devdocs-dwim)
+         ("C-h D"  . devdocs-dwim))
+  :init
+  (defconst devdocs-major-mode-docs-alist
+    '((c-mode          . ("c"))
+      (c++-mode        . ("cpp"))
+      (python-mode     . ("python~3.10" "python~2.7"))
+      (ruby-mode       . ("ruby~3.1"))
 
-    (mapc
-     (lambda (mode)
-       (add-hook (intern (format "%s-hook" (car mode)))
-                 (lambda ()
-                   (setq-local devdocs-current-docs (cdr mode)))))
-     devdocs-major-mode-docs-alist)
+      (rustic-mode     . ("rust"))
+      (css-mode        . ("css"))
+      (html-mode       . ("html"))
+      (julia-mode      . ("julia~1.8"))
+      (js-mode         . ("javascript" "jquery"))
+      (emacs-lisp-mode . ("elisp")))
+    "Alist of major-mode and docs.")
 
-    (setq devdocs-data-dir (expand-file-name "devdocs" user-emacs-directory))
+  (mapc
+   (lambda (mode)
+     (add-hook (intern (format "%s-hook" (car mode)))
+               (lambda ()
+                 (setq-local devdocs-current-docs (cdr mode)))))
+   devdocs-major-mode-docs-alist)
 
-    (defun devdocs-dwim()
-      "Look up a DevDocs documentation entry.
+  (setq devdocs-data-dir (expand-file-name "devdocs" user-emacs-directory))
+
+  (defun devdocs-dwim()
+    "Look up a DevDocs documentation entry.
 
 Install the doc if it's not installed."
-      (interactive)
-      ;; Install the doc if it's not installed
-      (mapc
-       (lambda (slug)
-         (unless (member slug (let ((default-directory devdocs-data-dir))
-                                (seq-filter #'file-directory-p
-                                            (when (file-directory-p devdocs-data-dir)
-                                              (directory-files "." nil "^[^.]")))))
-           (mapc
-            (lambda (doc)
-              (when (string= (alist-get 'slug doc) slug)
-                (devdocs-install doc)))
-            (devdocs--available-docs))))
-       (alist-get major-mode devdocs-major-mode-docs-alist))
+    (interactive)
+    ;; Install the doc if it's not installed
+    (mapc
+     (lambda (slug)
+       (unless (member slug (let ((default-directory devdocs-data-dir))
+                              (seq-filter #'file-directory-p
+                                          (when (file-directory-p devdocs-data-dir)
+                                            (directory-files "." nil "^[^.]")))))
+         (mapc
+          (lambda (doc)
+            (when (string= (alist-get 'slug doc) slug)
+              (devdocs-install doc)))
+          (devdocs--available-docs))))
+     (alist-get major-mode devdocs-major-mode-docs-alist))
 
-      ;; Lookup the symbol at point
-      (devdocs-lookup nil (thing-at-point 'symbol t)))))
+    ;; Lookup the symbol at point
+    (devdocs-lookup nil (thing-at-point 'symbol t))))
 
 ;; Misc. programming modes
-(when emacs/>=27p
-  (use-package csv-mode))
-
+(use-package csv-mode)
+(unless emacs/>=29p
+  (use-package csharp-mode))
 (use-package cask-mode)
 (use-package cmake-mode)
-(use-package csharp-mode)
+(use-package dart-mode)
 (use-package julia-mode)
 (use-package lua-mode)
 (use-package mermaid-mode)
-(use-package plantuml-mode)
 (use-package powershell)
-(use-package rmsbolt)                   ; A compiler output viewer
 (use-package scala-mode)
 (use-package swift-mode)
 (use-package v-mode)
 (use-package vimrc-mode)
+(use-package yaml-mode)
 
 (use-package protobuf-mode
   :hook (protobuf-mode . (lambda ()
@@ -216,16 +191,6 @@ Install the doc if it's not installed."
 (use-package nxml-mode
   :ensure nil
   :mode (("\\.xaml$" . xml-mode)))
-
-;; New `conf-toml-mode' in Emacs 26
-(unless (fboundp 'conf-toml-mode)
-  (use-package toml-mode))
-
-;; Batch Mode eXtras
-(use-package bmx-mode
-  :after company
-  :diminish
-  :hook (after-init . bmx-mode-setup-defaults))
 
 ;; Fish shell
 (use-package fish-mode

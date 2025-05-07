@@ -1,6 +1,6 @@
 ;; init-treemacs.el --- Initialize treemacs.	-*- lexical-binding: t -*-
 
-;; Copyright (C) 2018-2022 Vincent Zhang
+;; Copyright (C) 2018-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
@@ -30,20 +30,18 @@
 
 ;;; Code:
 
-(require 'init-const)
-(require 'init-custom)
+(eval-when-compile
+  (require 'init-custom))
 
 ;; A tree layout file explorer
 (use-package treemacs
   :commands (treemacs-follow-mode
              treemacs-filewatch-mode
-             treemacs-fringe-indicator-mode
              treemacs-git-mode)
   :custom-face
-  (cfrs-border-color ((t (:background ,(face-foreground 'font-lock-comment-face nil t)))))
+  (cfrs-border-color ((t (:inherit posframe-border))))
   :bind (([f8]        . treemacs)
          ("M-0"       . treemacs-select-window)
-         ("C-x 1"     . treemacs-delete-other-windows)
          ("C-x t 1"   . treemacs-delete-other-windows)
          ("C-x t t"   . treemacs)
          ("C-x t b"   . treemacs-bookmark)
@@ -58,7 +56,7 @@
         treemacs-follow-after-init       t
         treemacs-width                   30
         treemacs-no-png-images           (not centaur-icon))
-  :config
+
   (treemacs-follow-mode t)
   (treemacs-filewatch-mode t)
   (pcase (cons (not (null (executable-find "git")))
@@ -68,25 +66,24 @@
     (`(t . _)
      (treemacs-git-mode 'simple)))
 
-  (use-package treemacs-projectile
-    :after projectile
-    :bind (:map projectile-command-map
-           ("h" . treemacs-projectile)))
+  (use-package treemacs-nerd-icons
+    :demand t
+    :when (icons-displayable-p)
+    :custom-face
+    (treemacs-nerd-icons-root-face ((t (:inherit nerd-icons-green :height 1.3))))
+    (treemacs-nerd-icons-file-face ((t (:inherit nerd-icons-dsilver))))
+    :config (treemacs-load-theme "nerd-icons"))
 
   (use-package treemacs-magit
-    :after magit
-    :commands treemacs-magit--schedule-update
     :hook ((magit-post-commit
             git-commit-post-finish
             magit-post-stage
             magit-post-unstage)
            . treemacs-magit--schedule-update))
 
-  (use-package treemacs-persp
-    :after persp-mode
+  (use-package treemacs-tab-bar
     :demand t
-    :functions treemacs-set-scope-type
-    :config (treemacs-set-scope-type 'Perspectives)))
+    :config (treemacs-set-scope-type 'Tabs)))
 
 (provide 'init-treemacs)
 

@@ -1,6 +1,6 @@
 ;; init-shell.el --- Initialize shell configurations.	-*- lexical-binding: t -*-
 
-;; Copyright (C) 2006-2022 Vincent Zhang
+;; Copyright (C) 2006-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
@@ -29,9 +29,6 @@
 ;;
 
 ;;; Code:
-
-(require 'init-const)
-(require 'init-funcs)
 
 (use-package shell
   :ensure nil
@@ -107,48 +104,9 @@
   (advice-add 'gud-filter :around #'my-advice-compilation-filter))
 
 ;; Better terminal emulator
-;; @see https://github.com/akermu/emacs-libvterm#installation
-(when (and module-file-suffix           ; dynamic module
-           (executable-find "cmake")
-           (executable-find "libtool")
-           (executable-find "make"))
-  (use-package vterm
-    :bind (:map vterm-mode-map
-           ([f9] . (lambda ()
-                     (interactive)
-                     (and (fboundp 'shell-pop-toggle)
-                          (shell-pop-toggle)))))
-    :init (setq vterm-always-compile-module t))
-
-  (use-package multi-vterm
-    :bind ("C-<f9>" . multi-vterm)
-    :init (setq multi-vterm-buffer-name "vterm")
-    :config
-    (with-no-warnings
-      ;; Use `pop-to-buffer' instead of `switch-to-buffer'
-      (defun my-multi-vterm ()
-        "Create new vterm buffer."
-        (interactive)
-        (let ((vterm-buffer (multi-vterm-get-buffer)))
-          (setq multi-vterm-buffer-list
-                (nconc multi-vterm-buffer-list (list vterm-buffer)))
-          (set-buffer vterm-buffer)
-          (multi-vterm-internal)
-          (pop-to-buffer vterm-buffer)))
-      (advice-add #'multi-vterm :override #'my-multi-vterm)
-
-      ;; FIXME: `project-root' is introduced in 27+.
-      (defun my-multi-vterm-project-root ()
-        "Get `default-directory' for project using projectile or project.el."
-        (unless (boundp 'multi-vterm-projectile-installed-p)
-          (setq multi-vterm-projectile-installed-p (require 'projectile nil t)))
-        (if multi-vterm-projectile-installed-p
-            (projectile-project-root)
-          (let ((project (or (project-current) `(transient . ,default-directory))))
-            (if (fboundp 'project-root)
-                (project-root project)
-              (cdr project)))))
-      (advice-add #'multi-vterm-project-root :override #'my-multi-vterm-project-root))))
+(use-package eat
+  :hook ((eshell-load . eat-eshell-mode)
+         (eshell-load . eat-eshell-visual-command-mode)))
 
 ;; Shell Pop: leverage `popper'
 (with-no-warnings
@@ -157,7 +115,8 @@
 
   (defun shell-pop--shell (&optional arg)
     "Run shell and return the buffer."
-    (cond ((fboundp 'vterm) (vterm arg))
+    (cond ((fboundp 'eat) (eat arg))
+          ((fboundp 'vterm) (vterm arg))
           (sys/win32p (eshell arg))
           (t (shell))))
 
@@ -186,7 +145,7 @@
   (when (childframe-workable-p)
     (defun shell-pop-posframe-hidehandler (_)
       "Hidehandler used by `shell-pop-posframe-toggle'."
-      (not (eq (selected-frame) posframe--frame)))
+      (not (eq (selected-frame) shell-pop--frame)))
 
     (defun shell-pop-posframe-toggle ()
       "Toggle shell in child frame."
@@ -219,7 +178,7 @@
                    :min-width width
                    :min-height height
                    :internal-border-width 3
-                   :internal-border-color (face-background 'posframe-border nil t)
+                   :internal-border-color (face-background 'region nil t)
                    :background-color (face-background 'tooltip nil t)
                    :override-parameters '((cursor-type . t))
                    :respect-mode-line t

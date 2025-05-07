@@ -1,6 +1,6 @@
 ;; init-edit.el --- Initialize editing configurations.	-*- lexical-binding: t -*-
 
-;; Copyright (C) 2006-2022 Vincent Zhang
+;; Copyright (C) 2006-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
@@ -30,9 +30,6 @@
 
 ;;; Code:
 
-(require 'init-const)
-(require 'init-funcs)
-
 ;; Delete selection if you insert
 (use-package delsel
   :ensure nil
@@ -53,7 +50,7 @@
   (with-eval-after-load 'wdired
     (bind-key "<C-return>" #'rect-hydra/body wdired-mode-map))
   :pretty-hydra
-  ((:title (pretty-hydra-title "Rectangle" 'material "border_all" :height 1.2 :v-adjust -0.225)
+  ((:title (pretty-hydra-title "Rectangle" 'mdicon "nf-md-border_all")
     :color amaranth :body-pre (rectangle-mark-mode) :post (deactivate-mark) :quit-key ("q" "C-g"))
    ("Move"
     (("h" backward-char "←")
@@ -94,7 +91,17 @@
          ("C-c C-z v" . browse-url-of-file))
   :init
   (with-eval-after-load 'dired
-    (bind-key "C-c C-z f" #'browse-url-of-file dired-mode-map)))
+    (bind-key "C-c C-z f" #'browse-url-of-file dired-mode-map))
+
+  ;; For WSL
+  (let ((cmd-exe "/mnt/c/Windows/System32/cmd.exe")
+        (cmd-args '("/c" "start")))
+    (when (file-exists-p cmd-exe)
+      (setq browse-url-generic-program  cmd-exe
+            browse-url-generic-args     cmd-args
+            browse-url-browser-function 'browse-url-generic)
+      (when (daemonp)
+        (advice-add #'browse-url :override #'browse-url-generic)))))
 
 ;; Click to browse URL or to send to e-mail address
 (use-package goto-addr
@@ -106,7 +113,7 @@
 (use-package avy
   :bind (("C-:"   . avy-goto-char)
          ("C-'"   . avy-goto-char-2)
-         ("M-g f" . avy-goto-line)
+         ("M-g l" . avy-goto-line)
          ("M-g w" . avy-goto-word-1)
          ("M-g e" . avy-goto-word-0))
   :hook (after-init . avy-setup-default)
@@ -121,39 +128,20 @@
          ("M-Z" . avy-zap-up-to-char-dwim)))
 
 ;; Quickly follow links
-(use-package ace-link
-  :defines (org-mode-map
-            gnus-summary-mode-map
-            gnus-article-mode-map
-            ert-results-mode-map
-            paradox-menu-mode-map
-            elfeed-show-mode-map)
-  :bind ("M-o" . ace-link-addr)
-  :hook (after-init . ace-link-setup-default)
-  :config
-  (with-eval-after-load 'org
-    (bind-key "M-o" #'ace-link-org org-mode-map))
-
-  (with-eval-after-load 'gnus
-    (bind-keys
-     :map gnus-summary-mode-map
-     ("M-o" . ace-link-gnus)
-     :map gnus-article-mode-map
-     ("M-o" . ace-link-gnus)))
-
-  (with-eval-after-load 'ert
-    (bind-key "o" #'ace-link-help ert-results-mode-map))
-
-  (bind-keys
-   :map package-menu-mode-map
-   ("o" . ace-link-help)
-   :map process-menu-mode-map
-   ("o" . ace-link-help))
-  (with-eval-after-load 'paradox
-    (bind-key "o" #'ace-link-help paradox-menu-mode-map))
-
-  (with-eval-after-load 'elfeed
-    (bind-key "o" #'ace-link elfeed-show-mode-map)))
+(use-package link-hint
+  :bind (("M-o" . link-hint-open-link)
+         ("C-c l o" . link-hint-open-link)
+         ("C-c l c" . link-hint-copy-link))
+  :init
+  (with-eval-after-load 'embark
+    (setq link-hint-action-fallback-commands
+          (list :open (lambda ()
+                        (condition-case _
+                            (progn
+                              (embark-dwim)
+                              t)
+                          (error
+                           nil)))))))
 
 ;; Jump to Chinese characters
 (use-package ace-pinyin
@@ -171,8 +159,15 @@
                           (aggressive-indent-mode -1)))))
   :config
   ;; Disable in some modes
-  (dolist (mode '(gitconfig-mode asm-mode web-mode html-mode css-mode go-mode scala-mode prolog-inferior-mode))
-    (push mode aggressive-indent-excluded-modes))
+  (dolist (mode '(gitconfig-mode
+                  asm-mode web-mode html-mode
+                  css-mode css-ts-mode
+                  go-mode go-ts-mode
+                  python-ts-mode yaml-ts-mode
+                  scala-mode
+                  shell-mode term-mode vterm-mode
+                  prolog-inferior-mode))
+    (add-to-list 'aggressive-indent-excluded-modes mode))
 
   ;; Disable in some commands
   (add-to-list 'aggressive-indent-protected-commands #'delete-trailing-whitespace t)
@@ -202,14 +197,10 @@
                   (diminish (cdr pair)))
                 beginend-modes))
 
-;; An all-in-one comment command to rule them all
-(use-package comment-dwim-2
-  :bind ([remap comment-dwim] . comment-dwim-2)) ;
-
 ;; Drag stuff (lines, words, region, etc...) around
 (use-package drag-stuff
   :diminish
-  :commands drag-stuff-define-keys
+  :autoload drag-stuff-define-keys
   :hook (after-init . drag-stuff-global-mode)
   :config
   (add-to-list 'drag-stuff-except-modes 'org-mode)
@@ -252,11 +243,28 @@
 
 ;; Increase selected region by semantic units
 (use-package expand-region
-  :bind ("C-=" . er/expand-region))
+  :bind ("C-=" . er/expand-region)
+  :config
+  (when (centaur-treesit-available-p)
+    (defun treesit-mark-bigger-node ()
+      "Use tree-sitter to mark regions."
+      (let* ((root (treesit-buffer-root-node))
+             (node (treesit-node-descendant-for-range root (region-beginning) (region-end)))
+             (node-start (treesit-node-start node))
+             (node-end (treesit-node-end node)))
+        ;; Node fits the region exactly. Try its parent node instead.
+        (when (and (= (region-beginning) node-start) (= (region-end) node-end))
+          (when-let* ((node (treesit-node-parent node)))
+            (setq node-start (treesit-node-start node)
+                  node-end (treesit-node-end node))))
+        (set-mark node-end)
+        (goto-char node-start)))
+    (add-to-list 'er/try-expand-list 'treesit-mark-bigger-node)))
 
 ;; Multiple cursors
 (use-package multiple-cursors
-  :bind (("C-S-c C-S-c"   . mc/edit-lines)
+  :bind (("C-c m" . multiple-cursors-hydra/body)
+         ("C-S-c C-S-c"   . mc/edit-lines)
          ("C->"           . mc/mark-next-like-this)
          ("C-<"           . mc/mark-previous-like-this)
          ("C-c C-<"       . mc/mark-all-like-this)
@@ -265,7 +273,27 @@
          ("s-<mouse-1>"   . mc/add-cursor-on-click)
          ("C-S-<mouse-1>" . mc/add-cursor-on-click)
          :map mc/keymap
-         ("C-|" . mc/vertical-align-with-space)))
+         ("C-|" . mc/vertical-align-with-space))
+  :pretty-hydra
+  ((:title (pretty-hydra-title "Multiple Cursors" 'mdicon "nf-md-cursor_move")
+    :color amaranth :quit-key ("q" "C-g"))
+   ("Up"
+	(("p" mc/mark-previous-like-this "prev")
+	 ("P" mc/skip-to-previous-like-this "skip")
+	 ("M-p" mc/unmark-previous-like-this "unmark")
+	 ("|" mc/vertical-align "align with input CHAR"))
+    "Down"
+    (("n" mc/mark-next-like-this "next")
+	 ("N" mc/skip-to-next-like-this "skip")
+	 ("M-n" mc/unmark-next-like-this "unmark"))
+    "Misc"
+    (("l" mc/edit-lines "edit lines" :exit t)
+	 ("a" mc/mark-all-like-this "mark all" :exit t)
+	 ("s" mc/mark-all-in-region-regexp "search" :exit t)
+     ("<mouse-1>" mc/add-cursor-on-click "click"))
+    "% 2(mc/num-cursors) cursor%s(if (> (mc/num-cursors) 1) \"s\" \"\")"
+	(("0" mc/insert-numbers "insert numbers" :exit t)
+	 ("A" mc/insert-letters "insert letters" :exit t)))))
 
 ;; Smartly select region, rectangle, multi cursors
 (use-package smart-region
@@ -277,20 +305,13 @@
   :diminish
   :if (executable-find "aspell")
   :hook (((text-mode outline-mode) . flyspell-mode)
-         (prog-mode . flyspell-prog-mode)
+         ;; (prog-mode . flyspell-prog-mode)
          (flyspell-mode . (lambda ()
                             (dolist (key '("C-;" "C-," "C-."))
                               (unbind-key key flyspell-mode-map)))))
   :init (setq flyspell-issue-message-flag nil
               ispell-program-name "aspell"
-              ispell-extra-args '("--sug-mode=ultra" "--lang=en_US" "--run-together"))
-  :config
-  ;; Correcting words with flyspell via Ivy
-  (use-package flyspell-correct-ivy
-    :after ivy
-    :bind (:map flyspell-mode-map
-           ([remap flyspell-correct-word-before-point] . flyspell-correct-wrapper))
-    :init (setq flyspell-correct-interface #'flyspell-correct-ivy)))
+              ispell-extra-args '("--sug-mode=ultra" "--lang=en_US" "--run-together")))
 
 ;; Hungry deletion
 (use-package hungry-delete
@@ -300,52 +321,19 @@
               hungry-delete-except-modes
               '(help-mode minibuffer-mode minibuffer-inactive-mode calc-mode)))
 
-;; Framework for mode-specific buffer indexes
-(use-package imenu
-  :ensure nil
-  :bind (("C-." . imenu)))
-
 ;; Move to the beginning/end of line or code
 (use-package mwim
-  :bind (([remap move-beginning-of-line] . mwim-beginning-of-code-or-line)
-         ([remap move-end-of-line] . mwim-end-of-code-or-line)))
-
-;; Windows-scroll commands
-(use-package pager
-  :bind (([remap scroll-up-command] . pager-page-down)
-         ([remap scroll-down-command] . pager-page-up)
-         ([next]   . pager-page-down)
-         ([prior]  . pager-page-up)
-         ([M-up]   . pager-row-up)
-         ([M-kp-8] . pager-row-up)
-         ([M-down] . pager-row-down)
-         ([M-kp-2] . pager-row-down)))
+  :bind (([remap move-beginning-of-line] . mwim-beginning)
+         ([remap move-end-of-line] . mwim-end)))
 
 ;; Treat undo history as a tree
-(use-package undo-tree
-  :diminish
-  :hook (after-init . global-undo-tree-mode)
-  :init
-  (setq undo-tree-visualizer-timestamps t
-        undo-tree-enable-undo-in-region nil
-        undo-tree-auto-save-history nil)
-
-  ;; HACK: keep the diff window
-  (with-no-warnings
-    (make-variable-buffer-local 'undo-tree-visualizer-diff)
-    (setq-default undo-tree-visualizer-diff t)))
+(use-package vundo
+  :bind ("C-x u" . vundo)
+  :config (setq vundo-glyph-alist vundo-unicode-symbols))
 
 ;; Goto last change
 (use-package goto-chg
   :bind ("C-," . goto-last-change))
-
-;; Preview when `goto-char'
-(use-package goto-char-preview
-  :bind ([remap goto-char] . goto-char-preview))
-
-;; Preview when `goto-line'
-(use-package goto-line-preview
-  :bind ([remap goto-line] . goto-line-preview))
 
 ;; Handling capitalized subwords in a nomenclature
 (use-package subword
@@ -359,8 +347,8 @@
   :ensure nil
   :diminish hs-minor-mode
   :pretty-hydra
-  ((:title (pretty-hydra-title "HideShow" 'octicon "fold" :height 1.1 :v-adjust -0.05)
-    :color amaranth :quit-key "q")
+  ((:title (pretty-hydra-title "HideShow" 'octicon "nf-oct-fold")
+    :color amaranth :quit-key ("q" "C-g"))
    ("Fold"
     (("t" hs-toggle-all "toggle all")
      ("a" hs-show-all "show all")
@@ -437,14 +425,29 @@
                     " "))))
   (setq hs-set-up-overlay #'hs-display-code-line-counts))
 
+;; Copy&paste GUI clipboard from text terminal
+(unless sys/win32p
+  (use-package xclip
+    :hook (after-init . xclip-mode)
+    :config
+    ;; HACK: fix bug in xclip-mode on WSL
+    (when (eq xclip-method 'powershell)
+      (setq xclip-program "powershell.exe"))
+
+    ;; @see https://github.com/microsoft/wslg/issues/15#issuecomment-1796195663
+    (when (eq xclip-method 'wl-copy)
+      (set-clipboard-coding-system 'gbk) ; for wsl
+      (setq interprogram-cut-function
+            (lambda (text)
+              (start-process "xclip"  nil xclip-program "--trim-newline" "--type" "text/plain;charset=utf-8" text))))))
+
 ;; Open files as another user
 (unless sys/win32p
   (use-package sudo-edit))
 
-;; Narrow/Widen
-(use-package fancy-narrow
-  :diminish
-  :hook (after-init . fancy-narrow-mode))
+;; Hanlde minified code
+(use-package so-long
+  :hook (after-init . global-so-long-mode))
 
 (provide 'init-edit)
 

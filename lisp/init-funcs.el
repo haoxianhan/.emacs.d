@@ -1,6 +1,6 @@
 ;; init-funcs.el --- Define functions.	-*- lexical-binding: t -*-
 
-;; Copyright (C) 2018-2022 Vincent Zhang
+;; Copyright (C) 2018-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
@@ -25,25 +25,27 @@
 
 ;;; Commentary:
 ;;
-;; Define functions.
+;; Define some useful functions.
 ;;
 
 ;;; Code:
+
 (require 'cl-lib)
 
-(require 'init-const)
-(require 'init-custom)
-
 ;; Suppress warnings
-(defvar circadian-themes)
+(eval-when-compile
+  (require 'init-const)
+  (require 'init-custom))
+
 (defvar socks-noproxy)
 (defvar socks-server)
 
-(declare-function async-inject-variables 'async)
-(declare-function chart-bar-quickie 'chart)
-(declare-function flycheck-buffer 'flycheck)
-(declare-function flymake-start 'flymake)
-(declare-function upgrade-packages 'init-package)
+(declare-function browse-url-interactive-arg "browse-url")
+(declare-function chart-bar-quickie "chart")
+(declare-function consult-theme "ext:consult")
+(declare-function nerd-icons-install-fonts "ext:nerd-icons")
+(declare-function xwidget-buffer "xwidget")
+(declare-function xwidget-webkit-current-session "xwidget")
 
 
 
@@ -63,14 +65,20 @@
   (interactive)
   (set-buffer-file-coding-system 'undecided-dos nil))
 
-(defun delete-carrage-returns ()
-  "Delete `^M' characters in the buffer.
-Same as `replace-string C-q C-m RET RET'."
+(defun delete-dos-eol ()
+  "Delete `' characters in current region or buffer.
+Same as '`replace-string' `C-q' `C-m' `RET' `RET''."
   (interactive)
   (save-excursion
-    (goto-char 0)
-    (while (search-forward "\r" nil :noerror)
-      (replace-match ""))))
+    (when (region-active-p)
+      (narrow-to-region (region-beginning) (region-end)))
+    (goto-char (point-min))
+    (let ((count 0))
+      (while (search-forward "\r" nil t)
+        (replace-match "" nil t)
+        (setq count (1+ count)))
+      (message "Removed %d " count))
+    (widen)))
 
 ;; File and buffer
 (defun revert-this-buffer ()
@@ -124,20 +132,57 @@ Same as `replace-string C-q C-m RET RET'."
           (message "Copied '%s'" filename))
       (warn "Current buffer is not attached to a file!"))))
 
+(defun create-scratch-buffer ()
+  "Create a scratch buffer."
+  (interactive)
+  (switch-to-buffer (get-buffer-create "*scratch*"))
+  (lisp-interaction-mode))
+
+(defun save-buffer-as-utf8 (coding-system)
+  "Revert a buffer with `CODING-SYSTEM' and save as UTF-8."
+  (interactive "zCoding system for visited file (default nil):")
+  (revert-buffer-with-coding-system coding-system)
+  (set-buffer-file-coding-system 'utf-8)
+  (save-buffer))
+
+(defun save-buffer-gbk-as-utf8 ()
+  "Revert a buffer with GBK and save as UTF-8."
+  (interactive)
+  (save-buffer-as-utf8 'gbk))
+
+(defun selected-region-or-symbol-at-point ()
+  "Return the selected region, otherwise return the symbol at point."
+  (if (region-active-p)
+      (buffer-substring-no-properties (region-beginning) (region-end))
+    (thing-at-point 'symbol t)))
+
 ;; Browse URL
+(defun xwidget-workable-p ()
+  "Check whether xwidget is available."
+  (and (display-graphic-p)
+       (featurep 'xwidget-internal)))
+
+(defun centaur-browse-url (url)
+  "Open URL using a configurable method.
+See `browse-url' for more details."
+  (interactive (progn
+                 (require 'browse-url)
+                 (browse-url-interactive-arg "URL: ")))
+  (if (xwidget-workable-p)
+      (centaur-webkit-browse-url url t)
+    (browse-url url)))
+
 (defun centaur-webkit-browse-url (url &optional pop-buffer new-session)
   "Browse URL with xwidget-webkit' and switch or pop to the buffer.
 
 POP-BUFFER specifies whether to pop to the buffer.
-NEW-SESSION specifies whether to create a new xwidget-webkit session."
+NEW-SESSION specifies whether to create a new xwidget-webkit session.
+Interactively, URL defaults to the string looking like a url around point."
   (interactive (progn
                  (require 'browse-url)
-                 (browse-url-interactive-arg "xwidget-webkit URL: ")))
-  (or (featurep 'xwidget-internal)
-      (user-error "Your Emacs was not compiled with xwidgets support"))
+                 (browse-url-interactive-arg "URL: ")))
   (xwidget-webkit-browse-url url new-session)
-  (let ((buf (xwidget-buffer (and (fboundp 'xwidget-webkit-current-session)
-                                  (xwidget-webkit-current-session)))))
+  (let ((buf (xwidget-buffer (xwidget-webkit-current-session))))
     (when (buffer-live-p buf)
       (and (eq buf (current-buffer)) (quit-window))
       (if pop-buffer
@@ -167,35 +212,19 @@ NEW-SESSION specifies whether to create a new xwidget-webkit session."
   (browse-url centaur-homepage))
 
 ;; Open custom file
-(defun open-custom-file()
-  "Open or create `custom-file'."
+(defun find-custom-file()
+  "Open custom files."
   (interactive)
   (unless (file-exists-p custom-file)
     (if (file-exists-p centaur-custom-example-file)
         (copy-file centaur-custom-example-file custom-file)
       (user-error "The file `%s' doesn't exist" centaur-custom-example-file)))
-  (find-file custom-file)
-  (find-file-other-window centaur-custom-post-file))
+  (when (file-exists-p custom-file)
+    (find-file custom-file))
+  (when (file-exists-p centaur-custom-post-file)
+    (find-file-other-window centaur-custom-post-file)))
 
 ;; Misc
-(defun create-scratch-buffer ()
-  "Create a scratch buffer."
-  (interactive)
-  (switch-to-buffer (get-buffer-create "*scratch*"))
-  (lisp-interaction-mode))
-
-(defun save-buffer-as-utf8 (coding-system)
-  "Revert a buffer with `CODING-SYSTEM' and save as UTF-8."
-  (interactive "zCoding system for visited file (default nil):")
-  (revert-buffer-with-coding-system coding-system)
-  (set-buffer-file-coding-system 'utf-8)
-  (save-buffer))
-
-(defun save-buffer-gbk-as-utf8 ()
-  "Revert a buffer with GBK and save as UTF-8."
-  (interactive)
-  (save-buffer-as-utf8 'gbk))
-
 (defun byte-compile-elpa ()
   "Compile packages in elpa directory. Useful if you switch Emacs versions."
   (interactive)
@@ -224,17 +253,24 @@ NEW-SESSION specifies whether to create a new xwidget-webkit session."
     (if (fboundp 'native-compile-async)
         (native-compile-async dir t))))
 
-(defun icon-displayable-p ()
+(defun icons-displayable-p ()
   "Return non-nil if icons are displayable."
   (and centaur-icon
-       (or (display-graphic-p) (daemonp))
-       (or (featurep 'all-the-icons)
-           (require 'all-the-icons nil t))))
+       (or (featurep 'nerd-icons)
+           (require 'nerd-icons nil t))))
+
+(defun centaur-treesit-available-p ()
+  "Check whether tree-sitter is available.
+
+Native tree-sitter is introduced since 29.1."
+  (and centaur-tree-sitter
+       (fboundp 'treesit-available-p)
+       (treesit-available-p)))
 
 (defun centaur-set-variable (variable value &optional no-save)
   "Set the VARIABLE to VALUE, and return VALUE.
 
-  Save to `custom-file' if NO-SAVE is nil."
+  Save to option `custom-file' if NO-SAVE is nil."
   (customize-set-variable variable value)
   (when (and (not no-save)
              (file-writable-p custom-file))
@@ -243,16 +279,16 @@ NEW-SESSION specifies whether to create a new xwidget-webkit session."
       (goto-char (point-min))
       (while (re-search-forward
               (format "^[\t ]*[;]*[\t ]*(setq %s .*)" variable)
-              nil t)
-        (replace-match (format "(setq %s '%s)" variable value) nil nil))
+                               nil t)
+  (replace-match (format "(setq %s '%s)" variable value) nil nil))
       (write-region nil nil custom-file)
       (message "Saved %s (%s) to %s" variable value custom-file))))
 
 (defun too-long-file-p ()
   "Check whether the file is too long."
-  (if (fboundp 'buffer-line-statistics)
-      (> (car (buffer-line-statistics)) 3000)
-    (> (buffer-size) 100000)))
+  (or (> (buffer-size) 500000)
+      (and (fboundp 'buffer-line-statistics)
+           (> (car (buffer-line-statistics)) 10000))))
 
 (define-minor-mode centaur-read-mode
   "Minor Mode for better reading experience."
@@ -262,7 +298,7 @@ NEW-SESSION specifies whether to create a new xwidget-webkit session."
       (progn
         (and (fboundp 'olivetti-mode) (olivetti-mode 1))
         (and (fboundp 'mixed-pitch-mode) (mixed-pitch-mode 1))
-        (text-scale-set +2))
+        (text-scale-set +1))
     (progn
       (and (fboundp 'olivetti-mode) (olivetti-mode -1))
       (and (fboundp 'mixed-pitch-mode) (mixed-pitch-mode -1))
@@ -270,17 +306,16 @@ NEW-SESSION specifies whether to create a new xwidget-webkit session."
 
 ;; Pakcage repository (ELPA)
 (defun set-package-archives (archives &optional refresh async no-save)
-  "Set the package archives (ELPA).
+  "Set the package ARCHIVES (ELPA).
 
 REFRESH is non-nil, will refresh archive contents.
 ASYNC specifies whether to perform the downloads in the background.
-Save to `custom-file' if NO-SAVE is nil."
+Save to option `custom-file' if NO-SAVE is nil."
   (interactive
    (list
     (intern
-     (ivy-read "Select package archives: "
-               (mapcar #'car centaur-package-archives-alist)
-               :preselect (symbol-name centaur-package-archives)))))
+     (completing-read "Select package archives: "
+                      (mapcar #'car centaur-package-archives-alist)))))
   ;; Set option
   (centaur-set-variable 'centaur-package-archives archives no-save)
 
@@ -316,7 +351,7 @@ Return the fastest package archive."
                (require 'chart nil t)
                (require 'url nil t))
       (chart-bar-quickie
-       'horizontal
+       'vertical
        "Speed test for the ELPA mirrors"
        (mapcar (lambda (p) (symbol-name (car p))) centaur-package-archives-alist)
        "ELPA"
@@ -327,14 +362,27 @@ Return the fastest package archive."
     ;; Return the fastest
     fastest))
 
-;; WORKAROUND: fix blank screen issue on macOS.
-(defun fix-fullscreen-cocoa ()
-  "Address blank screen issue with child-frame in fullscreen.
-This issue has been addressed in 28."
-  (and sys/mac-cocoa-p
-       (not emacs/>=28p)
-       (bound-and-true-p ns-use-native-fullscreen)
-       (setq ns-use-native-fullscreen nil)))
+(defun set-from-minibuffer (sym)
+  "Set SYM value from minibuffer."
+  (eval-expression
+   (minibuffer-with-setup-hook
+       (lambda ()
+         (run-hooks 'eval-expression-minibuffer-setup-hook)
+         (goto-char (minibuffer-prompt-end))
+         (forward-char (length (format "(setq %S " sym))))
+     (read-from-minibuffer
+      "Eval: "
+      (let ((sym-value (symbol-value sym)))
+        (format
+         (if (or (consp sym-value)
+                 (and (symbolp sym-value)
+                      (not (null sym-value))
+                      (not (keywordp sym-value))))
+             "(setq %s '%S)"
+           "(setq %s %S)")
+         sym sym-value))
+      read-expression-map t
+      'read-expression-history))))
 
 
 
@@ -352,85 +400,20 @@ This issue has been addressed in 28."
     (message "Updating configurations...done")))
 (defalias 'centaur-update-config #'update-config)
 
-(defvar centaur--updating-packages nil)
-(defun update-packages (&optional force sync)
-  "Refresh package contents and update all packages.
-
-If FORCE is non-nil, the updating process will be restarted by force.
-If SYNC is non-nil, the updating process is synchronous."
+(defun update-packages ()
+  "Refresh package contents and update all packages."
   (interactive)
-
-  (if (process-live-p centaur--updating-packages)
-      (when force
-        (kill-process centaur--updating-packages)
-        (setq centaur--updating-packages nil))
-    (setq centaur--updating-packages nil))
-
   (message "Updating packages...")
-  (unless centaur--updating-packages
-    (if (and (not sync)
-             (require 'async nil t))
-        (setq centaur--updating-packages
-              (async-start
-               `(lambda ()
-                  ,(async-inject-variables "\\`\\(load-path\\)\\'")
-                  (require 'init-funcs)
-                  (require 'init-package)
-                  (upgrade-packages)
-                  (with-current-buffer auto-package-update-buffer-name
-                    (buffer-string)))
-               (lambda (result)
-                 (setq centaur--updating-packages nil)
-                 (message "%s" result)
-                 (message "Updating packages...done"))))
-      (upgrade-packages)
-      (message "Updating packages...done"))))
+  (package-upgrade-all)
+  (message "Updating packages...done"))
 (defalias 'centaur-update-packages #'update-packages)
 
-(defvar centaur--updating nil)
-(defun update-config-and-packages(&optional force sync)
-  "Update confgiurations and packages.
-
-If FORCE is non-nil, the updating process will be restarted by force.
-If SYNC is non-nil, the updating process is synchronous."
-  (interactive "P")
-
-  (if (process-live-p centaur--updating)
-      (when force
-        (kill-process centaur--updating)
-        (setq centaur--updating nil))
-    (setq centaur--updating nil))
-
-  (message "Updating Centaur Emacs...")
-  (unless centaur--updating
-    (if (and (not sync)
-             (require 'async nil t))
-        (setq centaur--updating
-              (async-start
-               `(lambda ()
-                  ,(async-inject-variables "\\`\\(load-path\\)\\'")
-                  (require 'init-funcs)
-                  (require 'init-package)
-                  (update-config)
-                  (update-packages nil t)
-                  (with-current-buffer auto-package-update-buffer-name
-                    (buffer-string)))
-               (lambda (result)
-                 (setq centaur--updating nil)
-                 (message "%s" result)
-                 (message "Updating Centaur Emacs...done"))))
-      (update-config)
-      (update-packages nil t)
-      (message "Updating Centaur Emacs...done"))))
-(defalias 'centaur-update #'update-config-and-packages)
-
-(defun update-all()
-  "Update dotfiles, org files, configurations and packages to the latest."
+(defun update-config-and-packages()
+  "Update confgiurations and packages."
   (interactive)
-  (update-org)
-  (update-dotfiles)
-  (update-config-and-packages))
-(defalias 'centaur-update-all #'update-all)
+  (update-config)
+  (update-packages))
+(defalias 'centaur-update #'update-config-and-packages)
 
 (defun update-dotfiles ()
   "Update the dotfiles to the latest version."
@@ -459,62 +442,20 @@ If SYNC is non-nil, the updating process is synchronous."
       (message "\"%s\" doesn't exist" dir))))
 (defalias 'centaur-update-org #'update-org)
 
+(defun update-all()
+  "Update dotfiles, org files, configurations and packages to the latest."
+  (interactive)
+  (update-org)
+  (update-dotfiles)
+  (update-config-and-packages))
+(defalias 'centaur-update-all #'update-all)
+
 
 ;; Fonts
 (defun centaur-install-fonts ()
   "Install necessary fonts."
   (interactive)
-
-  (let* ((font-dest (cond
-                     ;; Default Linux install directories
-                     ((member system-type '(gnu gnu/linux gnu/kfreebsd))
-                      (concat (or (getenv "XDG_DATA_HOME")
-                                  (concat (getenv "HOME") "/.local/share"))
-                              "/fonts/"))
-                     ;; Default MacOS install directory
-                     ((eq system-type 'darwin)
-                      (concat (getenv "HOME") "/Library/Fonts/"))))
-         (known-dest? (stringp font-dest))
-         (font-dest (or font-dest (read-directory-name "Font installation directory: " "~/"))))
-
-    (unless (file-directory-p font-dest) (mkdir font-dest t))
-
-    ;; Download `all-the-fonts'
-    (when (bound-and-true-p all-the-icons-font-names)
-      (let ((url-format "https://raw.githubusercontent.com/domtronn/all-the-icons.el/master/fonts/%s"))
-        (mapc (lambda (font)
-                (url-copy-file (format url-format font) (expand-file-name font font-dest) t))
-              all-the-icons-font-names)))
-
-    ;; Download `Symbola'
-    ;; See https://dn-works.com/wp-content/uploads/2020/UFAS-Fonts/Symbola.zip
-    (let* ((url (concat centaur-homepage "/files/6135060/symbola.zip"))
-           (temp-file (make-temp-file "symbola-" nil ".zip"))
-           (dir (concat (file-name-directory temp-file) "/symbola/"))
-           (unzip-script (cond ((executable-find "unzip")
-                                (format "mkdir -p %s && unzip -qq %s -d %s"
-                                        dir temp-file dir))
-                               ((executable-find "powershell")
-                                (format "powershell -noprofile -noninteractive \
-  -nologo -ex bypass Expand-Archive -path '%s' -dest '%s'" temp-file dir))
-                               (t (user-error "Unable to extract '%s' to '%s'! \
-  Please check unzip, powershell or extract manually." temp-file dir)))))
-      (url-copy-file url temp-file t)
-      (when (file-exists-p temp-file)
-        (shell-command-to-string unzip-script)
-        (let* ((font-name "Symbola.otf")
-               (temp-font (expand-file-name font-name dir)))
-          (if (file-exists-p temp-font)
-              (copy-file temp-font (expand-file-name font-name font-dest) t)
-            (message "Failed to download `Symbola'!")))))
-
-    (when known-dest?
-      (message "Fonts downloaded, updating font cache... <fc-cache -f -v> ")
-      (shell-command-to-string (format "fc-cache -f -v")))
-
-    (message "Successfully %s `all-the-icons' and `Symbola' fonts to `%s'!"
-             (if known-dest? "installed" "downloaded")
-             font-dest)))
+  (nerd-icons-install-fonts))
 
 
 
@@ -529,10 +470,12 @@ If SYNC is non-nil, the updating process is synchronous."
 
 (defun childframe-workable-p ()
   "Whether childframe is workable."
-  (or (not (or noninteractive
-               emacs-basic-display
-               (not (display-graphic-p))))
-      (daemonp)))
+  (and (>= emacs-major-version 26)
+       (not noninteractive)
+       (not emacs-basic-display)
+       (or (display-graphic-p)
+           (featurep 'tty-child-frames))
+       (eq (frame-parameter (selected-frame) 'minibuffer) 't)))
 
 (defun childframe-completion-workable-p ()
   "Whether childframe completion is workable."
@@ -559,21 +502,14 @@ If SYNC is non-nil, the updating process is synchronous."
        (memq (centaur--theme-name theme) custom-enabled-themes)))
 
 (defun centaur--load-theme (theme)
-  "Disable others and enable new one."
-  (when theme
-    (message "Loading theme `%s'..." theme)
+  "Disable others and enable new THEME."
+  (when-let* ((theme (centaur--theme-name theme)))
     (mapc #'disable-theme custom-enabled-themes)
-    (load-theme theme t)
-    (message "Loading theme `%s'...done" theme)))
+    (load-theme theme t)))
 
 (defun centaur--load-system-theme (appearance)
   "Load theme, taking current system APPEARANCE into consideration."
-  (mapc #'disable-theme custom-enabled-themes)
-  (centaur--load-theme (centaur--theme-name
-                        (pcase appearance
-                          ('light (cdr (assoc 'light centaur-system-themes)))
-                          ('dark (cdr (assoc 'dark centaur-system-themes)))
-                          (_ centaur-theme)))))
+  (centaur--load-theme (alist-get appearance centaur-system-themes)))
 
 (defun centaur-load-random-theme ()
   "Load the random theme."
@@ -585,40 +521,57 @@ If SYNC is non-nil, the updating process is synchronous."
       (centaur--load-theme theme))))
 
 (defun centaur-load-theme (theme &optional no-save)
-  "Load color THEME. Save to `custom-file' if NO-SAVE is nil."
+  "Load color THEME. Save to option `custom-file' if NO-SAVE is nil."
   (interactive
    (list
     (intern
-     (ivy-read "Load theme: "
-               `(auto
-                 random
-                 ,(if (bound-and-true-p ns-system-appearance) 'system "")
-                 ,@(mapcar #'car centaur-theme-alist))
-               :preselect (symbol-name centaur-theme)))))
-  ;; Set option
-  (centaur-set-variable 'centaur-theme theme no-save)
+     (completing-read "Load theme: "
+                      `(auto
+                        random
+                        system
+                        ,@(mapcar #'car centaur-theme-alist))))))
+
+  ;; Disable time-switching themes
+  (when (fboundp #'circadian-activate-latest-theme)
+    (cancel-function-timers #'circadian-activate-latest-theme))
 
   ;; Disable system theme
-  (remove-hook 'ns-system-appearance-change-functions #'centaur--load-system-theme)
+  (when (bound-and-true-p auto-dark-mode)
+    (setq auto-dark--last-dark-mode-state 'unknown)
+    (auto-dark-mode -1))
 
-  (pcase centaur-theme
+  (pcase theme
     ('auto
      ;; Time-switching themes
      (use-package circadian
-       :functions circadian-setup
+       :ensure t
+       :commands circadian-setup circadian-activate-latest-theme
        :custom (circadian-themes centaur-auto-themes)
        :init (circadian-setup)))
     ('system
      ;; System-appearance themes
-     (if (bound-and-true-p ns-system-appearance)
-         (progn
-           (centaur--load-system-theme ns-system-appearance)
-           (add-hook 'ns-system-appearance-change-functions #'centaur--load-system-theme))
-       (progn
-         (message "The `system' theme is unavailable on this platform. Using `default' theme...")
-         (centaur--load-theme (centaur--theme-name 'default)))))
-    ('random (centaur-load-random-theme))
-    (_ (centaur--load-theme (centaur--theme-name theme)))))
+     (use-package auto-dark
+       :ensure t
+       :diminish
+       :commands auto-dark-mode
+       :init
+       (setq auto-dark-themes `((,(alist-get 'dark centaur-system-themes))
+                                (,(alist-get 'light centaur-system-themes))))
+       (when (and sys/macp (not (display-graphic-p)))
+         (setq auto-dark-detection-method 'osascript))
+       (auto-dark-mode 1)))
+    ('random
+     (centaur-load-random-theme))
+    (_
+     (centaur--load-theme theme)))
+
+  ;; Set option
+  (centaur-set-variable 'centaur-theme theme no-save))
+
+(advice-add #'consult-theme :after
+            (lambda (theme)
+              "Save theme."
+              (centaur-set-variable 'centaur-theme theme)))
 
 
 
@@ -626,15 +579,15 @@ If SYNC is non-nil, the updating process is synchronous."
 (defvar centaur-frame--geometry nil)
 (defun centaur-frame--save-geometry ()
   "Save current frame's geometry."
-  (setq-local centaur-frame--geometry
-              `((left . ,(frame-parameter nil 'left))
-                (top . ,(frame-parameter nil 'top))
-                (width . ,(frame-parameter nil 'width))
-                (height . ,(frame-parameter nil 'height))
-                (fullscreen))))
+  (setq centaur-frame--geometry
+        `((left   . ,(frame-parameter nil 'left))
+          (top    . ,(frame-parameter nil 'top))
+          (width  . ,(frame-parameter nil 'width))
+          (height . ,(frame-parameter nil 'height))
+          (fullscreen))))
 
 (defun centaur-frame--fullscreen-p ()
-  "Returns Non-nil if the frame is fullscreen."
+  "Return Non-nil if the frame is fullscreen."
   (memq (frame-parameter nil 'fullscreen) '(fullscreen fullboth)))
 
 (defun centaur-frame-maximize ()
@@ -708,36 +661,36 @@ If SYNC is non-nil, the updating process is synchronous."
 
 
 ;; Network Proxy
-(defun proxy-http-show ()
+(defun show-http-proxy ()
   "Show HTTP/HTTPS proxy."
   (interactive)
   (if url-proxy-services
       (message "Current HTTP proxy is `%s'" centaur-proxy)
     (message "No HTTP proxy")))
 
-(defun proxy-http-enable ()
+(defun enable-http-proxy ()
   "Enable HTTP/HTTPS proxy."
   (interactive)
   (setq url-proxy-services
         `(("http" . ,centaur-proxy)
           ("https" . ,centaur-proxy)
           ("no_proxy" . "^\\(localhost\\|192.168.*\\|10.*\\)")))
-  (proxy-http-show))
+  (show-http-proxy))
 
-(defun proxy-http-disable ()
+(defun disable-http-proxy ()
   "Disable HTTP/HTTPS proxy."
   (interactive)
   (setq url-proxy-services nil)
-  (proxy-http-show))
+  (show-http-proxy))
 
-(defun proxy-http-toggle ()
+(defun toggle-http-proxy ()
   "Toggle HTTP/HTTPS proxy."
   (interactive)
   (if (bound-and-true-p url-proxy-services)
-      (proxy-http-disable)
-    (proxy-http-enable)))
+      (disable-http-proxy)
+    (enable-http-proxy)))
 
-(defun proxy-socks-show ()
+(defun show-socks-proxy ()
   "Show SOCKS proxy."
   (interactive)
   (if (bound-and-true-p socks-noproxy)
@@ -745,7 +698,7 @@ If SYNC is non-nil, the updating process is synchronous."
                (cadddr socks-server) (cadr socks-server) (caddr socks-server))
     (message "No SOCKS proxy")))
 
-(defun proxy-socks-enable ()
+(defun enable-socks-proxy ()
   "Enable SOCKS proxy."
   (interactive)
   (require 'socks)
@@ -756,23 +709,41 @@ If SYNC is non-nil, the updating process is synchronous."
          (port (string-to-number (cadr proxy))))
     (setq socks-server `("Default server" ,host ,port 5)))
   (setenv "all_proxy" (concat "socks5://" centaur-socks-proxy))
-  (proxy-socks-show))
+  (show-socks-proxy))
 
-(defun proxy-socks-disable ()
+(defun disable-socks-proxy ()
   "Disable SOCKS proxy."
   (interactive)
   (setq url-gateway-method 'native
         socks-noproxy nil
         socks-server nil)
   (setenv "all_proxy" "")
-  (proxy-socks-show))
+  (show-socks-proxy))
 
-(defun proxy-socks-toggle ()
+(defun toggle-socks-proxy ()
   "Toggle SOCKS proxy."
   (interactive)
-  (if (bound-and-true-p socks-noproxy)
-      (proxy-socks-disable)
-    (proxy-socks-enable)))
+  (if (bound-and-true-p socks-server)
+      (disable-socks-proxy)
+    (enable-socks-proxy)))
+
+(defun enable-proxy ()
+  "Enbale proxy."
+  (interactive)
+  (enable-http-proxy)
+  (enable-socks-proxy))
+
+(defun disable-proxy ()
+  "Disable proxy."
+  (interactive)
+  (disable-http-proxy)
+  (disable-socks-proxy))
+
+(defun toggle-proxy ()
+  "Toggle proxy."
+  (interactive)
+  (toggle-http-proxy)
+  (toggle-socks-proxy))
 
 (provide 'init-funcs)
 

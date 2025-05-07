@@ -1,6 +1,6 @@
 ;; init-vcs.el --- Initialize version control system configurations.	-*- lexical-binding: t -*-
 
-;; Copyright (C) 2016-2022 Vincent Zhang
+;; Copyright (C) 2016-2025 Vincent Zhang
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; URL: https://github.com/seagle0128/.emacs.d
@@ -30,88 +30,40 @@
 
 ;;; Code:
 
-(require 'init-const)
-(require 'init-funcs)
+(eval-when-compile
+  (require 'init-const))
 
 ;; Git
-;; See `magit-maybe-define-global-key-bindings'
+;; See `magit-define-global-key-bindings'
 (use-package magit
   :init (setq magit-diff-refine-hunk t)
   :config
   (when sys/win32p
     (setenv "GIT_ASKPASS" "git-gui--askpass"))
 
-  ;; Exterminate Magit buffers
-  (with-no-warnings
-    (defun my-magit-kill-buffers (&rest _)
-      "Restore window configuration and kill all Magit buffers."
-      (interactive)
-      (magit-restore-window-configuration)
-      (let ((buffers (magit-mode-get-buffers)))
-        (when (eq major-mode 'magit-status-mode)
-          (mapc (lambda (buf)
-                  (with-current-buffer buf
-                    (if (and magit-this-process
-                             (eq (process-status magit-this-process) 'run))
-                        (bury-buffer buf)
-                      (kill-buffer buf))))
-                buffers))))
-    (setq magit-bury-buffer-function #'my-magit-kill-buffers))
+  ;; Unbind M-1, M-2, M-3, and M-4 shortcuts due to conflict with `ace-window'
+  (unbind-key "M-1" magit-mode-map)
+  (unbind-key "M-2" magit-mode-map)
+  (unbind-key "M-3" magit-mode-map)
+  (unbind-key "M-4" magit-mode-map)
 
   ;; Access Git forges from Magit
-  (when (executable-find "cc")
+  (when emacs/>=29p
     (use-package forge
       :demand t
-      :defines forge-topic-list-columns
       :custom-face
       (forge-topic-label ((t (:inherit variable-pitch :height 0.9 :width condensed :weight regular :underline nil))))
-      :init
-      (setq forge-topic-list-columns
-            '(("#" 5 forge-topic-list-sort-by-number (:right-align t) number nil)
-              ("Title" 60 t nil title  nil)
-              ("State" 6 t nil state nil)
-              ("Updated" 10 t nil updated nil)))))
-
-  ;; Show TODOs in magit
-  (use-package magit-todos
-    :defines magit-todos-nice
-    :bind ("C-c C-t" . ivy-magit-todos)
-    :init
-    (setq magit-todos-nice (if (executable-find "nice") t nil))
-    (let ((inhibit-message t))
-      (magit-todos-mode 1))
-    :config
-    (with-eval-after-load 'magit-status
-      (transient-append-suffix 'magit-status-jump '(0 0 -1)
-        '("t " "Todos" magit-todos-jump-to-todos)))))
-
-;; Display transient in child frame
-(when (childframe-completion-workable-p)
-  (use-package transient-posframe
-    :diminish
-    :custom-face
-    (transient-posframe ((t (:inherit tooltip))))
-    (transient-posframe-border ((t (:inherit posframe-border))))
-    :hook (after-init . transient-posframe-mode)
-    :init
-    (setq transient-posframe-border-width 3
-          transient-posframe-min-height nil
-          transient-posframe-min-width 80
-          transient-posframe-poshandler 'posframe-poshandler-frame-center
-          transient-posframe-parameters '((left-fringe . 8)
-                                          (right-fringe . 8)))
-    :config
-    (with-no-warnings
-      (defun my-transient-posframe--hide ()
-        "Hide transient posframe."
-        (posframe-hide transient--buffer-name))
-      (advice-add #'transient-posframe--delete :override #'my-transient-posframe--hide))))
+      :init (setq forge-topic-list-columns
+                  '(("#" 5 forge-topic-list-sort-by-number (:right-align t) number nil)
+                    ("Title" 60 t nil title  nil)
+                    ("State" 6 t nil state nil)
+                    ("Updated" 10 t nil updated nil))))))
 
 ;; Walk through git revisions of a file
 (use-package git-timemachine
   :custom-face
-  (git-timemachine-minibuffer-author-face ((t (:inherit success))))
-  (git-timemachine-minibuffer-detail-face ((t (:inherit warning))))
+  (git-timemachine-minibuffer-author-face ((t (:inherit success :foreground unspecified))))
+  (git-timemachine-minibuffer-detail-face ((t (:inherit warning :foreground unspecified))))
   :bind (:map vc-prefix-map
          ("t" . git-timemachine))
   :hook ((git-timemachine-mode . (lambda ()
@@ -227,8 +179,8 @@
   :ensure nil
   :diminish
   :pretty-hydra
-  ((:title (pretty-hydra-title "Smerge" 'octicon "diff")
-    :color pink :quit-key "q")
+  ((:title (pretty-hydra-title "Smerge" 'octicon "nf-oct-diff")
+    :color pink :quit-key ("q" "C-g"))
    ("Move"
     (("n" smerge-next "next")
      ("p" smerge-prev "previous"))
